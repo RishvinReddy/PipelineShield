@@ -64,7 +64,7 @@ PipelineShield/
 │   │   ├── policy_engine.py # Gate evaluation & scanner enablement enforcement
 │   │   ├── reporter.py      # JSON & Markdown report generators
 │   │   └── cli.py           # CLI with exit codes 0 / 1 / 2
-│   └── tests/              # 258 pytest unit & integration tests (94% coverage)
+│   └── tests/              # 261 pytest unit & integration tests (94% coverage)
 ├── dashboard/              # Next.js App Router web dashboard
 │   ├── src/lib/            # Authoritative shared TypeScript validator (report-validator.ts)
 │   ├── src/app/            # App Router pages and health route
@@ -211,7 +211,7 @@ scanners:
 
 - [x] **Phase 1**: Repository and Development Environment Scaffold
 - [x] **Phase 2**: Python Security Policy Engine Implementation
-- [x] **Phase 3**: Automated Policy Engine Testing Suite (258 tests, 94% coverage)
+- [x] **Phase 3**: Automated Policy Engine Testing Suite (261 tests, 94% coverage)
 - [x] **Phase 4**: Trivy, Semgrep, and Dependency Review CI Integration (Fail-closed)
 - [x] **Phase 5**: Next.js Security Dashboard Interface & Artifact Uploader
 - [ ] **Phase 6**: Vercel Live Deployment (Configuration present; deployment pending)

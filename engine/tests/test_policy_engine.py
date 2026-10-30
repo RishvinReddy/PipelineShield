@@ -462,7 +462,7 @@ class TestScannerSpecificPolicy:
         assert result.scanner_status["dependency_review"] == "DISABLED"
         assert any("dependency_review' is disabled" in r.lower() for r in result.reasons)
 
-    def test_all_scanners_disabled_produces_pass_with_disabled_statuses(self):
+    def test_all_scanners_disabled_produces_error_decision_fail_closed(self):
         from pipelineshield.models import (
             DependencyReviewScannerConfig,
             ScannersConfig,
@@ -478,13 +478,56 @@ class TestScannerSpecificPolicy:
         )
         engine = PolicyEngine(config)
         result = engine.evaluate([])
-        assert result.decision == GateDecision.PASS
+        assert result.decision == GateDecision.ERROR
         assert result.scanner_status == {
             "trivy": "DISABLED",
             "semgrep": "DISABLED",
             "dependency_review": "DISABLED",
         }
         assert any("all security scanners are disabled" in r.lower() for r in result.reasons)
+
+    def test_zero_scanners_completed_returns_error_fail_closed(self):
+        """If no scanners completed execution (e.g. all disabled or not applicable), decision is ERROR."""
+        from pipelineshield.models import (
+            DependencyReviewScannerConfig,
+            ScannersConfig,
+            SemgrepScannerConfig,
+            TrivyScannerConfig,
+        )
+        config = PolicyConfig(
+            scanners=ScannersConfig(
+                trivy=TrivyScannerConfig(enabled=False),
+                semgrep=SemgrepScannerConfig(enabled=False),
+                dependency_review=DependencyReviewScannerConfig(enabled=True),
+            )
+        )
+        engine = PolicyEngine(config)
+        result = engine.evaluate([], scanner_status={"dependency_review": "NOT_APPLICABLE"})
+        assert result.decision == GateDecision.ERROR
+        assert result.scanner_status["dependency_review"] == "NOT_APPLICABLE"
+        assert any("no security scanning was performed" in r.lower() for r in result.reasons)
+
+    def test_scanner_disabled_intentionally_with_other_scanner_completed_evaluates_clean(self):
+        """If one scanner is disabled, but another scanner completed clean, decision is PASS."""
+        from pipelineshield.models import (
+            DependencyReviewScannerConfig,
+            ScannersConfig,
+            SemgrepScannerConfig,
+            TrivyScannerConfig,
+        )
+        config = PolicyConfig(
+            scanners=ScannersConfig(
+                trivy=TrivyScannerConfig(enabled=False),
+                semgrep=SemgrepScannerConfig(enabled=True),
+                dependency_review=DependencyReviewScannerConfig(enabled=False),
+            )
+        )
+        engine = PolicyEngine(config)
+        result = engine.evaluate([], scanner_status={"semgrep": "COMPLETED"})
+        assert result.decision == GateDecision.PASS
+        assert result.scanner_status["trivy"] == "DISABLED"
+        assert result.scanner_status["semgrep"] == "COMPLETED"
+        assert result.scanner_status["dependency_review"] == "DISABLED"
 
     def test_enabled_scanners_distinguished_from_zero_findings(self):
         from pipelineshield.models import (

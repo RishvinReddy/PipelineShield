@@ -358,6 +358,7 @@ export default function Home() {
           advisory_findings: Array.isArray(parsed.advisory_findings) ? parsed.advisory_findings : [],
           exempted_findings: Array.isArray(parsed.exempted_findings) ? parsed.exempted_findings : [],
           evaluated_at: parsed.evaluated_at || new Date().toISOString(),
+          scanner_status: parsed.scanner_status || {},
           policy_metadata: parsed.policy_metadata || {},
         };
 
@@ -371,7 +372,7 @@ export default function Home() {
     reader.readAsText(file);
   };
 
-  const getDecisionBadge = (decision: string) => {
+  const getDecisionBadge = (decision: string, reasons: string[] = []) => {
     switch (decision) {
       case "BLOCK":
         return {
@@ -400,19 +401,25 @@ export default function Home() {
           glow: "shadow-emerald-500/20",
           cardBg: "from-emerald-950/40 via-slate-900/60 to-slate-950 border-emerald-500/30",
         };
-      default:
+      default: {
+        const isNoScan = reasons.some((r) =>
+          r.toLowerCase().includes("no security scanning was performed")
+        );
         return {
           icon: AlertOctagon,
-          text: "ENGINE ERROR (Exit 2)",
-          sub: "Execution fault or configuration error encountered",
+          text: isNoScan ? "ASSESSMENT NOT PERFORMED (Exit 2)" : "ENGINE ERROR (Exit 2)",
+          sub: isNoScan
+            ? "PR gatekeeper failed: zero security scanners executed or all scanners disabled"
+            : "Execution fault or configuration error encountered",
           bg: "bg-red-500/10 border-red-500/30 text-red-400",
           glow: "shadow-red-500/20",
           cardBg: "from-red-950/40 via-slate-900/60 to-slate-950 border-red-500/30",
         };
+      }
     }
   };
 
-  const decisionMeta = getDecisionBadge(currentResult.decision);
+  const decisionMeta = getDecisionBadge(currentResult.decision, currentResult.reasons);
   const DecisionIcon = decisionMeta.icon;
 
   const getSeverityBadge = (severity: string) => {

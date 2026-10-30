@@ -350,7 +350,13 @@ def main(args: Optional[list] = None) -> int:
         return _EXIT_BLOCK
 
     if result.decision == GateDecision.ERROR:
-        print("[GATE] ERROR — engine could not complete evaluation.", file=sys.stderr)
+        if any("no security scanning was performed" in r.lower() for r in result.reasons):
+            print(
+                "[GATE] ERROR — security assessment not performed (all scanners disabled or unexecuted).",
+                file=sys.stderr,
+            )
+        else:
+            print("[GATE] ERROR — engine could not complete evaluation.", file=sys.stderr)
         for err in result.errors:
             print(f"[ENGINE ERROR] {err}", file=sys.stderr)
         return _EXIT_ERROR

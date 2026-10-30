@@ -150,9 +150,19 @@ async function main() {
   );
   const allDisabledOut = path.join(REPORTS_DIR, "contract_all_disabled.json");
   const allDisabledCmd = `"${PYTHON}" -m pipelineshield.cli --policy "${allDisabledPolicyPath}" --output "${allDisabledOut}"`;
-  execSync(allDisabledCmd, { cwd: ROOT_DIR, stdio: "pipe" });
+  try {
+    execSync(allDisabledCmd, { cwd: ROOT_DIR, stdio: "pipe" });
+    throw new Error("Expected all-scanners-disabled CLI invocation to exit with code 2 (ERROR), but it exited 0");
+  } catch (err) {
+    if (err.status !== 2) {
+      throw new Error(`Expected CLI exit code 2 for all-scanners-disabled mode, got ${err.status}`);
+    }
+  }
   const allDisabledData = JSON.parse(fs.readFileSync(allDisabledOut, "utf-8"));
   assertValid(allDisabledData, "All-scanners-disabled report");
+  if (allDisabledData.decision !== "ERROR") {
+    throw new Error(`Expected decision ERROR for all-scanners-disabled mode, got ${allDisabledData.decision}`);
+  }
   if (allDisabledData.scanner_status?.trivy !== "DISABLED" ||
       allDisabledData.scanner_status?.semgrep !== "DISABLED" ||
       allDisabledData.scanner_status?.dependency_review !== "DISABLED") {
@@ -161,7 +171,7 @@ async function main() {
   if (!allDisabledData.reasons.some((r) => r.includes("All security scanners are disabled"))) {
     throw new Error("Expected explicit reason that all scanners were disabled");
   }
-  console.log("       ✓ All-scanners-disabled mode evaluated safely (exit 0, valid schema)");
+  console.log("       ✓ All-scanners-disabled mode evaluated safely (exit 2, decision ERROR, valid schema)");
 
   console.log("[8/10] Testing push-event scanner status (Dependency Review NOT_APPLICABLE)...");
   const pushOut = path.join(REPORTS_DIR, "contract_push.json");

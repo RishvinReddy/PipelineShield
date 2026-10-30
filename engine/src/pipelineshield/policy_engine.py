@@ -249,6 +249,9 @@ class PolicyEngine:
         all_disabled = all(
             stat == ScannerStatus.DISABLED.value for stat in final_scanner_status.values()
         )
+        has_completed_scanner = any(
+            stat == ScannerStatus.COMPLETED.value for stat in final_scanner_status.values()
+        )
         if all_disabled:
             reason_all_disabled = (
                 "All security scanners are disabled by policy configuration. "
@@ -256,6 +259,13 @@ class PolicyEngine:
             )
             if reason_all_disabled not in reasons:
                 reasons.append(reason_all_disabled)
+        elif not has_completed_scanner:
+            reason_no_completed = (
+                "No security scanners completed execution for this event. "
+                "No security scanning was performed."
+            )
+            if reason_no_completed not in reasons:
+                reasons.append(reason_no_completed)
         else:
             for sc_name, sc_stat in sorted(final_scanner_status.items()):
                 if sc_stat == ScannerStatus.DISABLED.value:
@@ -309,6 +319,12 @@ class PolicyEngine:
         # 0. Scanner failure check — failed scanner execution must fail closed
         if scanner_status and any(
             stat == ScannerStatus.FAILED.value for stat in scanner_status.values()
+        ):
+            return GateDecision.ERROR
+
+        # 0b. Zero scanner completed check — fail closed if no scanner performed security scanning
+        if scanner_status and not any(
+            stat == ScannerStatus.COMPLETED.value for stat in scanner_status.values()
         ):
             return GateDecision.ERROR
 
