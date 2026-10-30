@@ -6,6 +6,17 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      simulate_scanner_failure:
+        description: "Controlled scanner failure simulation for DevSecOps demonstration"
+        required: false
+        default: "none"
+        type: choice
+        options:
+          - none
+          - trivy
+          - semgrep
+          - dependency_review
 
 permissions:
   contents: read
@@ -116,7 +127,13 @@ jobs:
       - name: Install & Run Trivy Vulnerability Scanner
         id: trivy
         continue-on-error: true
+        env:
+          SIMULATE_FAILURE: ${{ inputs.simulate_scanner_failure }}
         run: |
+          if [ "$SIMULATE_FAILURE" = "trivy" ]; then
+            echo "[SIMULATION] Simulating controlled Trivy scanner failure."
+            exit 1
+          fi
           TRIVY_ENABLED=$(python3 -c "from pipelineshield.config import load_policy; p = load_policy('config/policy.yaml'); print('true' if p.scanners.trivy.enabled else 'false')")
           if [ "$TRIVY_ENABLED" != "true" ]; then
             echo "Trivy scanner is disabled in policy.yaml — skipping execution."
@@ -137,7 +154,13 @@ jobs:
       - name: Install & Run Semgrep SAST
         id: semgrep
         continue-on-error: true
+        env:
+          SIMULATE_FAILURE: ${{ inputs.simulate_scanner_failure }}
         run: |
+          if [ "$SIMULATE_FAILURE" = "semgrep" ]; then
+            echo "[SIMULATION] Simulating controlled Semgrep scanner failure."
+            exit 1
+          fi
           SEMGREP_ENABLED=$(python3 -c "from pipelineshield.config import load_policy; p = load_policy('config/policy.yaml'); print('true' if p.scanners.semgrep.enabled else 'false')")
           if [ "$SEMGREP_ENABLED" != "true" ]; then
             echo "Semgrep scanner is disabled in policy.yaml — skipping execution."
@@ -182,7 +205,12 @@ jobs:
         env:
           DEP_CHANGES: ${{ steps.dependency-review.outputs.dependency-changes }}
           DEP_OUTCOME: ${{ steps.dependency-review.outcome }}
+          SIMULATE_FAILURE: ${{ inputs.simulate_scanner_failure }}
         run: |
+          if [ "$SIMULATE_FAILURE" = "dependency_review" ]; then
+            echo "[SIMULATION] Simulating controlled Dependency Review failure."
+            exit 1
+          fi
           if [ "$DEP_OUTCOME" != "success" ]; then
             echo "Dependency Review action step failed."
             exit 1
