@@ -1,0 +1,58 @@
+version: "1.0"
+metadata:
+  name: "PipelineShield Default Security Policy"
+  description: "Strict security gate rules for production CI/CD pipelines"
+  updated_at: "2026-10-30"
+
+enforcement:
+  mode: "strict" # strict (fail on block/warn violations), permissive (warn only), monitor (report only)
+  fail_on_block: true
+  fail_on_warn: false
+
+thresholds:
+  critical: "BLOCK"
+  high: "BLOCK"
+  medium: "WARN"
+  low: "PASS"
+  info: "PASS"
+
+scanners:
+  trivy:
+    enabled: true
+    fail_on_cve_severity: ["CRITICAL", "HIGH"]
+    scan_types:
+      - "vuln"
+      - "config"
+      - "secret"
+    ignore_unfixed: false
+
+  semgrep:
+    enabled: true
+    rulesets:
+      - "p/security-audit"
+      - "p/secrets"
+      - "p/owasp-top-ten"
+    fail_on_severity: ["ERROR", "WARNING"]
+
+  dependency_review:
+    enabled: true
+    allow_licenses:
+      - "MIT"
+      - "Apache-2.0"
+      - "BSD-2-Clause"
+      - "BSD-3-Clause"
+      - "ISC"
+      - "0BSD"
+    deny_licenses:
+      - "GPL-3.0"
+      - "AGPL-3.0"
+    deny_severities:
+      - "critical"
+      - "high"
+
+exemptions:
+  # Specific finding IDs or CVEs accepted under known business risks
+  findings: []
+  paths:
+    - "tests/**"
+    - "examples/**"
