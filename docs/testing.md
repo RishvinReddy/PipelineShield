@@ -34,10 +34,14 @@ pytest --cov=pipelineshield --cov-report=term-missing
 
 ### Test Organization
 
-- `tests/test_imports.py`: Verifies module imports, package structure, and basic schema definitions.
-- `tests/test_config.py`: Verifies YAML parsing, schema defaults, and rejection of invalid policies.
-- `tests/test_normalizer.py`: Validates parsing of Trivy, Semgrep, and Dependency Review JSON fixtures.
-- `tests/test_policy_engine.py`: Tests threshold evaluation, path exemptions, and rule whitelisting.
+- `tests/test_imports.py`: Verifies module imports, package structure, and top-level exports.
+- `tests/test_models.py`: Validates Pydantic data schemas, enums, severity ordering, and immutability.
+- `tests/test_config.py`: Verifies YAML parsing, schema defaults, strict validation, and rejection of invalid policies.
+- `tests/test_normalizer.py`: Validates native parsing of Trivy, Semgrep, and Dependency Review JSON fixtures.
+- `tests/test_policy_engine.py`: Tests threshold evaluation, path exemptions, expiration, and error-guard wrapper.
+- `tests/test_reporter.py`: Tests JSON report generation, Markdown tables, and markdown-escaping for security.
+- `tests/test_cli.py`: End-to-end CLI tests covering exit codes (0/1/2), multi-scanner flags, and malformed inputs.
+- `tests/fixtures/`: Real-world scanner JSON datasets for clean runs, CVEs, and SAST findings.
 
 ---
 

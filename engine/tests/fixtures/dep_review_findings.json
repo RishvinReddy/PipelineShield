@@ -1,0 +1,22 @@
+[
+  {
+    "package_name": "lodash",
+    "version": "4.17.15",
+    "severity": "critical",
+    "advisory_id": "GHSA-35jh-r3h4-6jhm",
+    "advisory_url": "https://github.com/advisories/GHSA-35jh-r3h4-6jhm",
+    "summary": "Prototype Pollution in lodash",
+    "vulnerable_versions": "< 4.17.21",
+    "fixed_at": "4.17.21"
+  },
+  {
+    "package_name": "minimist",
+    "version": "1.2.5",
+    "severity": "high",
+    "advisory_id": "GHSA-xvch-5gv4-984h",
+    "advisory_url": "https://github.com/advisories/GHSA-xvch-5gv4-984h",
+    "summary": "Prototype Pollution in minimist",
+    "vulnerable_versions": "< 1.2.6",
+    "fixed_at": "1.2.6"
+  }
+]

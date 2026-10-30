@@ -1,0 +1,41 @@
+{
+  "results": [
+    {
+      "check_id": "python.lang.security.audit.dangerous-subprocess-use-audit",
+      "path": "app/shell_runner.py",
+      "start": {"line": 42, "col": 5, "offset": 1024},
+      "end": {"line": 42, "col": 60, "offset": 1079},
+      "extra": {
+        "message": "Subprocess module usage detected with shell=True. This may allow OS command injection if user input reaches this call. Use a list of arguments instead.",
+        "severity": "ERROR",
+        "metadata": {
+          "category": "security",
+          "cwe": ["CWE-78"],
+          "owasp": ["A1:2017 - Injection"],
+          "technology": ["python"],
+          "confidence": "HIGH"
+        },
+        "lines": "subprocess.call(user_input, shell=True)"
+      }
+    },
+    {
+      "check_id": "python.lang.security.audit.hardcoded-password-string",
+      "path": "config/settings.py",
+      "start": {"line": 18, "col": 1, "offset": 420},
+      "end": {"line": 18, "col": 50, "offset": 469},
+      "extra": {
+        "message": "Hardcoded string 'password' used. Consider using environment variables or a secrets manager instead.",
+        "severity": "WARNING",
+        "metadata": {
+          "category": "security",
+          "cwe": ["CWE-259"],
+          "owasp": ["A2:2017 - Broken Authentication"],
+          "technology": ["python"],
+          "confidence": "MEDIUM"
+        },
+        "lines": "DB_PASSWORD = \"hardcoded_password_here\""
+      }
+    }
+  ],
+  "errors": []
+}

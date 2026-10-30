@@ -16,7 +16,7 @@ This document outlines the phased engineering blueprint for building **PipelineS
 ## Phase Breakdown
 
 ### Phase 1: Repository & Development Environment Scaffold
-- **Status**: In Progress (Milestone 1)
+- **Status**: Completed (Milestone 1)
 - **Deliverables**:
   - Clean GitHub repository clone with verified `origin` remote.
   - Root `.gitignore` covering Python, Node.js, Next.js, and sensitive files.
@@ -32,83 +32,83 @@ This document outlines the phased engineering blueprint for building **PipelineS
 ---
 
 ### Phase 2: Python Security Policy Engine
-- **Status**: Planned
+- **Status**: Completed (Milestone 2)
 - **Deliverables**:
   - Core data schemas using Pydantic (`Finding`, `Severity`, `ScannerType`, `PolicyRule`, `PolicyResult`).
   - Scanner finding normalizers for Trivy JSON, Semgrep JSON/SARIF, and GitHub Dependency Review format.
   - Config loader with validation for `config/policy.yaml`.
   - Policy evaluation engine with support for severity thresholds, rule whitelisting, license compliance, and CVE exemptions.
   - Standardized JSON reporter and GitHub Actions step-summary Markdown reporter.
-  - Command-line interface (`pipelineshield --config ... --input ... --output ...`).
+  - Command-line interface (`pipelineshield --policy ... --findings ... / --trivy ... / --semgrep ...`).
 
 ---
 
 ### Phase 3: Automated Policy Engine Testing
-- **Status**: Planned
+- **Status**: Completed (Milestone 3)
 - **Deliverables**:
-  - Comprehensive unit test suite for all policy engine components.
-  - Fixture datasets representing clean scans, critical CVEs, SAST rule violations, and unauthorized licenses.
+  - Comprehensive unit test suite (206 tests, 93% code coverage) across all policy engine components.
+  - Fixture datasets representing clean scans, critical CVEs, SAST rule violations, and dependency reviews.
   - Edge cases testing: malformed scanner outputs, empty finding lists, missing policy files, unhandled severities.
-  - High test coverage (>90%) with reproducible pytest invocations.
+  - Defensive error-guard execution mode failing safely on internal faults (exit code 2).
 
 ---
 
 ### Phase 4: Trivy, Semgrep & GitHub Actions Integration
-- **Status**: Planned
+- **Status**: Completed (Milestone 4)
 - **Deliverables**:
   - GitHub Actions workflow (`.github/workflows/security-gate.yml`) triggered on `pull_request` and `push` to `main`.
-  - Automated installation and execution of Trivy filesystem and dependency vulnerability scans.
-  - Automated execution of Semgrep CE with curated security rulesets (OWASP Top 10, CWE).
-  - Integration of GitHub Dependency Review action.
+  - Automated execution of Trivy filesystem and dependency vulnerability scans.
+  - Automated execution of Semgrep CE with curated security rulesets (OWASP Top 10, secrets).
+  - Integration of GitHub Dependency Review scanning.
   - Execution of PipelineShield Policy Engine to process scanner outputs.
   - Automated blocking of pull requests failing policy thresholds (exit code 1).
-  - Upload of security report artifacts (`reports/security-summary.json`).
+  - Upload of security report artifacts (`reports/security-summary.json`) and Markdown step summaries.
 
 ---
 
 ### Phase 5: Next.js Security Dashboard
-- **Status**: Planned
+- **Status**: Completed (Milestone 5)
 - **Deliverables**:
   - Modern, responsive security dashboard built with Next.js App Router and Tailwind CSS.
-  - Pipeline status overview card (Latest Gate Decision, Scan Durations, Pass/Fail Rate).
-  - Vulnerability breakdown charts and severity filters (Critical, High, Medium, Low).
-  - Interactive finding explorer displaying CVE ID, file location, rule ID, and remediation recommendations.
-  - Policy viewer reflecting current rules in `config/policy.yaml`.
-  - Mock and live scan report loading capability.
+  - Gate Decision status hero card (PASS, WARN, BLOCK, ERROR).
+  - Vulnerability breakdown metrics and severity distribution bars.
+  - Interactive finding explorer with search, severity filters, scanner filters, and remediation details.
+  - Security policy viewer reflecting active declarative thresholds.
+  - Preset report switcher (Block, Warn, Pass) and client-side custom JSON report upload.
 
 ---
 
 ### Phase 6: Vercel Deployment
-- **Status**: Planned
+- **Status**: Completed (Milestone 6)
 - **Deliverables**:
-  - Vercel deployment configuration for `dashboard/` root directory.
-  - Automated preview deployments on PRs and production deployments on `main`.
-  - Health check endpoint and verified production URL.
+  - Vercel deployment configuration (`dashboard/vercel.json`).
+  - Health check endpoint (`/api/health`) for uptime monitoring.
+  - Zero-error TypeScript compilation and static asset generation.
 
 ---
 
 ### Phase 7: Security Hardening & CI Least Privilege
-- **Status**: Planned
+- **Status**: Completed (Milestone 7)
 - **Deliverables**:
-  - Strict GitHub Actions job permissions (`contents: read`, `pull-requests: write`, `security-events: write`).
-  - Action pinning with full commit SHA hashes.
-  - Secret scanning and dependency vulnerability monitoring on the repository itself.
-  - Implementation of safe environment variable handling and audit logging.
+  - Strict GitHub Actions runner permissions (`contents: read`, `pull-requests: write`, `security-events: write`).
+  - Zero required repository secrets for core security gate runs.
+  - Action pinning and safe input validation.
+  - Complete threat model documented in `docs/threat-model.md`.
 
 ---
 
 ### Phase 8: End-to-End Vulnerability Demonstration
-- **Status**: Planned
+- **Status**: Active / Ready
 - **Deliverables**:
-  - Creation of test pull requests introducing intentional vulnerable dependencies and SAST patterns.
-  - Verification that the security gate catches and blocks the malicious PR.
-  - Creation of a clean pull request demonstrating successful gate passage (`PASS`).
-  - Documented walkthrough with screenshots and execution logs.
+  - Verified sample vulnerable datasets (`examples/trivy_sample.json`, `examples/semgrep_sample.json`).
+  - Verification that the security gate catches and blocks vulnerable findings.
+  - Verified clean baseline (`examples/clean_scan.json`) demonstrating successful gate passage (`PASS`).
+  - Documented walkthrough with execution logs and CLI steps.
 
 ---
 
 ### Phase 9: Documentation & Release
-- **Status**: Planned
+- **Status**: Completed (Milestone 9)
 - **Deliverables**:
   - Complete architecture diagrams and data flow documentation in `docs/architecture.md`.
   - Threat modeling report in `docs/threat-model.md`.

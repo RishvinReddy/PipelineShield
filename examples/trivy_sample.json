@@ -1,0 +1,76 @@
+{
+  "SchemaVersion": 2,
+  "ArtifactName": ".",
+  "ArtifactType": "filesystem",
+  "Results": [
+    {
+      "Target": "requirements.txt",
+      "Class": "lang-pkgs",
+      "Type": "pip",
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "CVE-2022-42966",
+          "PkgName": "cryptography",
+          "InstalledVersion": "3.4.8",
+          "FixedVersion": "38.0.3",
+          "Layer": {},
+          "SeveritySource": "nvd",
+          "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2022-42966",
+          "DataSource": {
+            "ID": "pypa",
+            "Name": "PyPA",
+            "URL": "https://github.com/pypa/advisory-database"
+          },
+          "Title": "Bleichenbacher timing oracle attack in RSA decryption",
+          "Description": "An issue was discovered in the Bleichenbacher timing oracle in the RSA decryption implementation in the cryptography package.",
+          "Severity": "CRITICAL",
+          "CweIDs": ["CWE-208"],
+          "CVSS": {
+            "nvd": {
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N",
+              "V3Score": 7.5
+            }
+          },
+          "References": [
+            "https://github.com/pyca/cryptography/issues/7938"
+          ]
+        },
+        {
+          "VulnerabilityID": "CVE-2023-49083",
+          "PkgName": "cryptography",
+          "InstalledVersion": "3.4.8",
+          "FixedVersion": "41.0.6",
+          "Severity": "HIGH",
+          "Title": "NULL pointer dereference in PKCS12 parsing",
+          "Description": "NULL pointer dereference when loading malformed PKCS12 files.",
+          "CweIDs": ["CWE-476"],
+          "References": []
+        }
+      ]
+    },
+    {
+      "Target": "package-lock.json",
+      "Class": "lang-pkgs",
+      "Type": "npm",
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "CVE-2023-26115",
+          "PkgName": "word-wrap",
+          "InstalledVersion": "1.2.3",
+          "FixedVersion": "1.2.4",
+          "Severity": "MEDIUM",
+          "Title": "ReDoS vulnerability in word-wrap",
+          "Description": "Regular expression denial of service in word-wrap.",
+          "CweIDs": ["CWE-1333"],
+          "References": []
+        }
+      ]
+    },
+    {
+      "Target": "go.sum",
+      "Class": "lang-pkgs",
+      "Type": "gomod",
+      "Vulnerabilities": null
+    }
+  ]
+}
