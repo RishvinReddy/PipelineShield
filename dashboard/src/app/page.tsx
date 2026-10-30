@@ -24,6 +24,7 @@ import {
   Check,
   XCircle,
   FileCode2,
+  Info,
 } from "lucide-react";
 import { validateReportSchema } from "@/lib/report-validator";
 
@@ -73,14 +74,14 @@ interface ProcessedFinding extends Finding {
   gateCategory: "blocking" | "warning" | "advisory" | "exempted";
 }
 
-// Sample reports for demonstration
+// Explicit demonstration datasets for all four verdict states
 const SAMPLE_REPORTS: Record<
   string,
   { label: string; tag: string; isDemo: boolean; data: EvaluationResult }
 > = {
   vulnerable: {
-    label: "Demo 1: Vulnerable PR (Mock Data)",
-    tag: "BLOCKED (Exit 1)",
+    label: "Demo: Vulnerable PR (BLOCK)",
+    tag: "BLOCK (Exit 1)",
     isDemo: true,
     data: {
       decision: "BLOCK",
@@ -178,14 +179,44 @@ const SAMPLE_REPORTS: Record<
       },
       policy_metadata: {
         name: "PipelineShield Default Security Policy",
-        repository: "RishvinReddy/PipelineShield",
-        branch: "feature/auth-hardening",
-        commit: "7e2a91b",
+      },
+    },
+  },
+  clean: {
+    label: "Demo: Clean Baseline (PASS)",
+    tag: "PASS (Exit 0)",
+    isDemo: true,
+    data: {
+      decision: "PASS",
+      reasons: ["All findings within acceptable policy thresholds"],
+      summary: {
+        total_findings: 0,
+        critical: 0,
+        high: 0,
+        medium: 0,
+        low: 0,
+        info: 0,
+        exempted: 0,
+        blocking_count: 0,
+        warning_count: 0,
+      },
+      blocking_findings: [],
+      warning_findings: [],
+      advisory_findings: [],
+      exempted_findings: [],
+      evaluated_at: "2026-10-30T17:30:00Z",
+      scanner_status: {
+        trivy: "COMPLETED",
+        semgrep: "COMPLETED",
+        dependency_review: "COMPLETED",
+      },
+      policy_metadata: {
+        name: "PipelineShield Default Security Policy",
       },
     },
   },
   warnings_only: {
-    label: "Demo 3: Advisory Warnings (Mock Data)",
+    label: "Demo: Advisory Warnings (WARN)",
     tag: "WARN (Exit 0)",
     isDemo: true,
     data: {
@@ -239,19 +270,19 @@ const SAMPLE_REPORTS: Record<
       },
       policy_metadata: {
         name: "PipelineShield Default Security Policy",
-        repository: "RishvinReddy/PipelineShield",
-        branch: "fix/logging-config",
-        commit: "4c8821a",
       },
     },
   },
-  clean: {
-    label: "Demo 2: Clean Baseline (Mock Data)",
-    tag: "PASSED (Exit 0)",
+  scanner_error: {
+    label: "Demo: Scanner Failure (ERROR)",
+    tag: "ERROR (Exit 2)",
     isDemo: true,
     data: {
-      decision: "PASS",
-      reasons: ["All findings within acceptable policy thresholds"],
+      decision: "ERROR",
+      reasons: [
+        "Scanner 'trivy' failed to execute or produce valid output (exit code 127)",
+        "Fail-closed policy triggered: incomplete security scanning cannot produce PASS decision",
+      ],
       summary: {
         total_findings: 0,
         critical: 0,
@@ -267,17 +298,14 @@ const SAMPLE_REPORTS: Record<
       warning_findings: [],
       advisory_findings: [],
       exempted_findings: [],
-      evaluated_at: "2026-10-30T17:30:00Z",
+      evaluated_at: "2026-10-30T17:15:00Z",
       scanner_status: {
-        trivy: "COMPLETED",
+        trivy: "FAILED",
         semgrep: "COMPLETED",
-        dependency_review: "COMPLETED",
+        dependency_review: "NOT_APPLICABLE",
       },
       policy_metadata: {
         name: "PipelineShield Default Security Policy",
-        repository: "RishvinReddy/PipelineShield",
-        branch: "main",
-        commit: "84cf337",
       },
     },
   },
@@ -389,7 +417,7 @@ export default function Home() {
           exempted_findings: Array.isArray(parsed.exempted_findings)
             ? parsed.exempted_findings
             : [],
-          evaluated_at: parsed.evaluated_at || new Date().toISOString(),
+          evaluated_at: parsed.evaluated_at || undefined,
           scanner_status: parsed.scanner_status || {},
           policy_metadata: parsed.policy_metadata || {},
         };
@@ -448,7 +476,7 @@ export default function Home() {
           badgeText: "Exit Code 2",
           sub: isNoScan
             ? "Fail-closed trigger: zero security scanners executed or all scanners were disabled."
-            : "Pipeline execution encountered an unhandled error or scanner fault.",
+            : "Pipeline execution encountered an unhandled error or scanner execution failure.",
           badgeBg: "bg-[#FEF2F2] text-[#991B1B] border-[#FECACA]",
           borderAccent: "border-l-[#991B1B]",
           iconColor: "text-[#991B1B]",
@@ -501,12 +529,39 @@ export default function Home() {
     }
   };
 
-  const repoMeta = currentResult.policy_metadata?.repository || "RishvinReddy/PipelineShield";
-  const branchMeta = currentResult.policy_metadata?.branch || "main";
-  const commitMeta = currentResult.policy_metadata?.commit || "84cf337";
+  // Strict provenance metadata: NEVER hardcode live commit SHAs or branches into uploaded or demo data
+  const repoDisplay = isDemoActive
+    ? "Demonstration (Synthetic)"
+    : currentResult.policy_metadata?.repository || "Not available";
+
+  const branchDisplay = isDemoActive
+    ? "demo/synthetic-run"
+    : currentResult.policy_metadata?.branch || "Not available";
+
+  const commitDisplay = isDemoActive
+    ? "N/A (Synthetic)"
+    : currentResult.policy_metadata?.commit || "Not available";
+
+  const evaluatedAtDisplay = currentResult.evaluated_at || "Not available";
 
   return (
     <div className="min-h-screen flex flex-col bg-[#F4F6F8] text-[#172435] font-sans">
+      {/* Print-Only Formal Header */}
+      <div className="hidden print:block p-4 border-b border-[#E2E8F0] space-y-2">
+        <h1 className="text-xl font-bold text-[#172435]">
+          PipelineShield — Security Assessment Report
+        </h1>
+        <div className="text-xs text-[#475569] grid grid-cols-2 gap-2">
+          <div>Repository: <strong>{repoDisplay}</strong></div>
+          <div>Branch: <strong>{branchDisplay}</strong></div>
+          <div>Commit: <strong>{commitDisplay}</strong></div>
+          <div>Evaluated: <strong>{evaluatedAtDisplay}</strong></div>
+        </div>
+        <div className="text-xs text-[#64748B] italic">
+          Data Provenance: {isDemoActive ? "DEMONSTRATION DATA (MOCK)" : `Uploaded Artifact (${customFileName})`}
+        </div>
+      </div>
+
       {/* Top Navigation */}
       <header className="no-print bg-white border-b border-[#E2E8F0] sticky top-0 z-40">
         <div className="max-w-[1280px] mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
@@ -564,7 +619,7 @@ export default function Home() {
                   Security Assessment Report
                 </span>
                 <span className="text-xs text-[#64748B]">
-                  ISO/IEC 27001 & DevSecOps Automated Gate
+                  Automated DevSecOps Policy Gate
                 </span>
               </div>
               <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[#172435]">
@@ -573,19 +628,19 @@ export default function Home() {
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[#64748B] pt-1">
                 <span className="inline-flex items-center space-x-1.5 font-mono text-[#172435]">
                   <FileCode2 className="w-3.5 h-3.5 text-[#64748B]" />
-                  <span>{repoMeta}</span>
+                  <span>Repository: <strong className="font-semibold text-[#172435]">{repoDisplay}</strong></span>
                 </span>
                 <span className="inline-flex items-center space-x-1.5 font-mono">
                   <GitBranch className="w-3.5 h-3.5 text-[#64748B]" />
-                  <span>{branchMeta}</span>
+                  <span>Branch: <strong className="font-semibold text-[#172435]">{branchDisplay}</strong></span>
                 </span>
                 <span className="inline-flex items-center space-x-1.5 font-mono">
                   <GitCommit className="w-3.5 h-3.5 text-[#64748B]" />
-                  <span>{commitMeta}</span>
+                  <span>Commit: <strong className="font-semibold text-[#172435]">{commitDisplay}</strong></span>
                 </span>
                 <span className="inline-flex items-center space-x-1.5 font-mono">
                   <Clock className="w-3.5 h-3.5 text-[#64748B]" />
-                  <span>{currentResult.evaluated_at || "Recent run"}</span>
+                  <span>Evaluated: <strong className="font-semibold text-[#172435]">{evaluatedAtDisplay}</strong></span>
                 </span>
               </div>
             </div>
@@ -606,7 +661,7 @@ export default function Home() {
                         : "bg-white text-[#475569] border-[#E2E8F0] hover:bg-[#F8FAFC] hover:text-[#172435]"
                     }`}
                   >
-                    {item.label.split(":")[0]}
+                    {item.label}
                   </button>
                 ))}
                 {customReport && (
@@ -618,7 +673,7 @@ export default function Home() {
                         : "bg-white text-[#475569] border-[#E2E8F0] hover:bg-[#F8FAFC]"
                     }`}
                   >
-                    {customFileName ? `Custom: ${customFileName.slice(0, 16)}...` : "Custom"}
+                    {customFileName ? `Uploaded: ${customFileName.slice(0, 16)}...` : "Uploaded"}
                   </button>
                 )}
               </div>
@@ -642,35 +697,34 @@ export default function Home() {
           </div>
         )}
 
-        {/* Provenance Notice */}
+        {/* Data Provenance Notice */}
         <div className="no-print">
           {isDemoActive ? (
-            <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-[#FEF08A] bg-[#FEFCE8] text-[#A16207] text-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between px-3.5 py-2.5 rounded-lg border border-[#FED7AA] bg-[#FFF7ED] text-[#9A3412] text-xs gap-2">
               <div className="flex items-center space-x-2">
-                <span className="font-semibold uppercase text-[10px] px-1.5 py-0.5 rounded bg-[#FEF08A] text-[#713F12]">
-                  Demo Mock Data
+                <span className="font-bold uppercase text-[10px] px-2 py-0.5 rounded bg-[#EA580C] text-white tracking-wider flex-shrink-0">
+                  DEMONSTRATION DATA (MOCK)
                 </span>
-                <span>
-                  Viewing static demonstration dataset for illustration. Not connected to an active
-                  CI pipeline stream.
+                <span className="font-medium">
+                  Viewing static synthetic dataset for interface inspection. Not connected to an active GitHub CI workflow telemetry stream.
                 </span>
               </div>
-              <span className="text-[11px] font-mono text-[#A16207]">
-                Evaluated: {currentResult.evaluated_at || "Static Mock"}
+              <span className="text-[11px] font-mono text-[#C2410C] flex-shrink-0">
+                Timestamp: {evaluatedAtDisplay}
               </span>
             </div>
           ) : (
-            <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-[#A6F4C5] bg-[#ECFDF3] text-[#18794E] text-xs">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between px-3.5 py-2.5 rounded-lg border border-[#A6F4C5] bg-[#ECFDF3] text-[#14532D] text-xs gap-2">
               <div className="flex items-center space-x-2">
-                <span className="font-semibold uppercase text-[10px] px-1.5 py-0.5 rounded bg-[#A6F4C5] text-[#14532D]">
-                  Validated Artifact
+                <span className="font-bold uppercase text-[10px] px-2 py-0.5 rounded bg-[#16A34A] text-white tracking-wider flex-shrink-0">
+                  VALIDATED ARTIFACT
                 </span>
                 <span>
-                  Viewing user-uploaded report: <strong>{customFileName}</strong>
+                  Viewing client-uploaded security report: <strong>{customFileName}</strong> (Schema validated)
                 </span>
               </div>
-              <span className="text-[11px] font-mono text-[#18794E]">
-                Evaluated: {currentResult.evaluated_at || "User Artifact"}
+              <span className="text-[11px] font-mono text-[#18794E] flex-shrink-0">
+                Timestamp: {evaluatedAtDisplay}
               </span>
             </div>
           )}
@@ -678,7 +732,7 @@ export default function Home() {
 
         {/* Gate Verdict Card (Hero) */}
         <section
-          className={`bg-white rounded-xl border border-[#E2E8F0] border-l-4 ${decisionStyle.borderAccent} p-6 shadow-2xs space-y-4`}
+          className={`bg-white rounded-xl border border-[#E2E8F0] border-l-4 ${decisionStyle.borderAccent} p-6 shadow-2xs space-y-4 print-page-break`}
         >
           <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
             <div className="space-y-2">
@@ -709,10 +763,10 @@ export default function Home() {
             {/* Quick Status Tag */}
             <div className="flex md:flex-col items-end justify-between md:justify-center border-t md:border-t-0 md:border-l border-[#E2E8F0] pt-3 md:pt-0 md:pl-6 text-right">
               <span className="text-[11px] uppercase tracking-wider font-medium text-[#64748B]">
-                Gate Status
+                Verdict Decision
               </span>
               <span
-                className={`text-sm font-bold uppercase mt-0.5 ${
+                className={`text-base font-bold uppercase mt-0.5 ${
                   currentResult.decision === "BLOCK"
                     ? "text-[#B42318]"
                     : currentResult.decision === "PASS"
@@ -729,7 +783,7 @@ export default function Home() {
         </section>
 
         {/* 4 KPI Cards */}
-        <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <section className="grid grid-cols-2 lg:grid-cols-4 gap-4 print-page-break">
           <div className="bg-white rounded-xl border border-[#E2E8F0] p-4 shadow-2xs">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-[#64748B]">
               Total Findings
@@ -780,7 +834,7 @@ export default function Home() {
         </section>
 
         {/* Scanner Execution Coverage & Severity Distribution Row */}
-        <section className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        <section className="grid grid-cols-1 lg:grid-cols-12 gap-4 print-page-break">
           {/* Scanner Coverage (5 cols) */}
           <div className="lg:col-span-5 bg-white rounded-xl border border-[#E2E8F0] p-4 shadow-2xs space-y-3">
             <div className="flex items-center justify-between">
@@ -803,7 +857,7 @@ export default function Home() {
                     StatusIcon = XCircle;
                   } else if (status === "NOT_APPLICABLE") {
                     statusBadge = "bg-[#EFF6FF] text-[#2563A6] border-[#BFDBFE]";
-                    StatusIcon = Check;
+                    StatusIcon = Info;
                   } else if (status === "FAILED") {
                     statusBadge = "bg-[#FEF3F2] text-[#B42318] border-[#FECDCA]";
                     StatusIcon = AlertOctagon;
@@ -1002,7 +1056,7 @@ export default function Home() {
                 )}
               </div>
             ) : (
-              <div className="bg-white rounded-xl border border-[#E2E8F0] overflow-hidden shadow-2xs">
+              <div className="bg-white rounded-xl border border-[#E2E8F0] overflow-hidden shadow-2xs print-page-break">
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs border-collapse">
                     <thead>
