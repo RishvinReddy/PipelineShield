@@ -15,8 +15,15 @@ import {
   Search,
   Upload,
   FileText,
-  ChevronRight,
-  RefreshCw,
+  ChevronDown,
+  ChevronUp,
+  Printer,
+  GitBranch,
+  GitCommit,
+  Clock,
+  Check,
+  XCircle,
+  FileCode2,
 } from "lucide-react";
 import { validateReportSchema } from "@/lib/report-validator";
 
@@ -67,7 +74,10 @@ interface ProcessedFinding extends Finding {
 }
 
 // Sample reports for demonstration
-const SAMPLE_REPORTS: Record<string, { label: string; tag: string; isDemo: boolean; data: EvaluationResult }> = {
+const SAMPLE_REPORTS: Record<
+  string,
+  { label: string; tag: string; isDemo: boolean; data: EvaluationResult }
+> = {
   vulnerable: {
     label: "Demo 1: Vulnerable PR (Mock Data)",
     tag: "BLOCKED (Exit 1)",
@@ -94,7 +104,8 @@ const SAMPLE_REPORTS: Record<string, { label: string; tag: string; isDemo: boole
           id: "CVE-2022-42966",
           scanner: "trivy",
           title: "ReDoS vulnerability in python-cryptography",
-          description: "Regular Expression Denial of Service in cryptography X.509 certificate parsing.",
+          description:
+            "Regular Expression Denial of Service in cryptography X.509 certificate parsing.",
           severity: "CRITICAL",
           file_path: "engine/requirements.txt",
           package_name: "cryptography",
@@ -107,18 +118,21 @@ const SAMPLE_REPORTS: Record<string, { label: string; tag: string; isDemo: boole
           id: "python.lang.security.audit.dangerous-subprocess-use-audit",
           scanner: "semgrep",
           title: "Potential command injection via unsanitized subprocess invocation",
-          description: "Detected subprocess call with shell=True or dynamic untrusted command arguments.",
+          description:
+            "Detected subprocess call with shell=True or dynamic untrusted command arguments.",
           severity: "HIGH",
           file_path: "engine/src/pipelineshield/runner.py",
           line_number: 142,
           cwe_ids: ["CWE-78", "CWE-88"],
-          remediation: "Pass command arguments as a list with shell=False and sanitize parameters.",
+          remediation:
+            "Pass command arguments as a list with shell=False and sanitize parameters.",
         },
         {
           id: "GHSA-35jh-r3h4-6jhm",
           scanner: "dependency_review",
           title: "Prototype Pollution in lodash",
-          description: "Deep clone utility functions in lodash prior to 4.17.21 allow object prototype tampering.",
+          description:
+            "Deep clone utility functions in lodash prior to 4.17.21 allow object prototype tampering.",
           severity: "HIGH",
           file_path: "dashboard/package.json",
           package_name: "lodash",
@@ -152,7 +166,7 @@ const SAMPLE_REPORTS: Record<string, { label: string; tag: string; isDemo: boole
           package_name: "word-wrap",
           installed_version: "1.2.3",
           fixed_version: "1.2.4",
-          remediation: "Update word-wrap dependency.",
+          remediation: "Update word-wrap dependency to version 1.2.4.",
         },
       ],
       exempted_findings: [],
@@ -164,7 +178,9 @@ const SAMPLE_REPORTS: Record<string, { label: string; tag: string; isDemo: boole
       },
       policy_metadata: {
         name: "PipelineShield Default Security Policy",
-        mode: "strict",
+        repository: "RishvinReddy/PipelineShield",
+        branch: "feature/auth-hardening",
+        commit: "7e2a91b",
       },
     },
   },
@@ -174,9 +190,7 @@ const SAMPLE_REPORTS: Record<string, { label: string; tag: string; isDemo: boole
     isDemo: true,
     data: {
       decision: "WARN",
-      reasons: [
-        "1 MEDIUM finding(s) meet WARN threshold",
-      ],
+      reasons: ["1 MEDIUM finding(s) meet WARN threshold"],
       summary: {
         total_findings: 2,
         critical: 0,
@@ -225,7 +239,9 @@ const SAMPLE_REPORTS: Record<string, { label: string; tag: string; isDemo: boole
       },
       policy_metadata: {
         name: "PipelineShield Default Security Policy",
-        mode: "strict",
+        repository: "RishvinReddy/PipelineShield",
+        branch: "fix/logging-config",
+        commit: "4c8821a",
       },
     },
   },
@@ -259,7 +275,9 @@ const SAMPLE_REPORTS: Record<string, { label: string; tag: string; isDemo: boole
       },
       policy_metadata: {
         name: "PipelineShield Default Security Policy",
-        mode: "strict",
+        repository: "RishvinReddy/PipelineShield",
+        branch: "main",
+        commit: "84cf337",
       },
     },
   },
@@ -307,12 +325,20 @@ export default function Home() {
       });
     }
 
-    // Fallback if 'findings' is not populated (e.g. older format)
+    // Fallback if 'findings' is not populated
     const list: ProcessedFinding[] = [];
-    (currentResult.blocking_findings || []).forEach((f) => list.push({ ...f, gateCategory: "blocking" }));
-    (currentResult.warning_findings || []).forEach((f) => list.push({ ...f, gateCategory: "warning" }));
-    (currentResult.advisory_findings || []).forEach((f) => list.push({ ...f, gateCategory: "advisory" }));
-    (currentResult.exempted_findings || []).forEach((f) => list.push({ ...f, gateCategory: "exempted" }));
+    (currentResult.blocking_findings || []).forEach((f) =>
+      list.push({ ...f, gateCategory: "blocking" })
+    );
+    (currentResult.warning_findings || []).forEach((f) =>
+      list.push({ ...f, gateCategory: "warning" })
+    );
+    (currentResult.advisory_findings || []).forEach((f) =>
+      list.push({ ...f, gateCategory: "advisory" })
+    );
+    (currentResult.exempted_findings || []).forEach((f) =>
+      list.push({ ...f, gateCategory: "exempted" })
+    );
     return list;
   }, [currentResult]);
 
@@ -353,10 +379,16 @@ export default function Home() {
           reasons: Array.isArray(parsed.reasons) ? parsed.reasons : [],
           summary: parsed.summary,
           findings: Array.isArray(parsed.findings) ? parsed.findings : undefined,
-          blocking_findings: Array.isArray(parsed.blocking_findings) ? parsed.blocking_findings : [],
+          blocking_findings: Array.isArray(parsed.blocking_findings)
+            ? parsed.blocking_findings
+            : [],
           warning_findings: Array.isArray(parsed.warning_findings) ? parsed.warning_findings : [],
-          advisory_findings: Array.isArray(parsed.advisory_findings) ? parsed.advisory_findings : [],
-          exempted_findings: Array.isArray(parsed.exempted_findings) ? parsed.exempted_findings : [],
+          advisory_findings: Array.isArray(parsed.advisory_findings)
+            ? parsed.advisory_findings
+            : [],
+          exempted_findings: Array.isArray(parsed.exempted_findings)
+            ? parsed.exempted_findings
+            : [],
           evaluated_at: parsed.evaluated_at || new Date().toISOString(),
           scanner_status: parsed.scanner_status || {},
           policy_metadata: parsed.policy_metadata || {},
@@ -366,40 +398,45 @@ export default function Home() {
         setCustomFileName(file.name);
         setActiveReportKey("custom");
       } catch (err) {
-        setUploadError(`Failed to parse JSON file: ${err instanceof Error ? err.message : String(err)}`);
+        setUploadError(
+          `Failed to parse JSON file: ${err instanceof Error ? err.message : String(err)}`
+        );
       }
     };
     reader.readAsText(file);
   };
 
-  const getDecisionBadge = (decision: string, reasons: string[] = []) => {
+  const getDecisionStyles = (decision: string, reasons: string[] = []) => {
     switch (decision) {
       case "BLOCK":
         return {
           icon: ShieldAlert,
-          text: "BLOCKED (Exit 1)",
-          sub: "PR gatekeeper failed: critical/high vulnerabilities violated policy",
-          bg: "bg-rose-500/10 border-rose-500/30 text-rose-400",
-          glow: "shadow-rose-500/20",
-          cardBg: "from-rose-950/40 via-slate-900/60 to-slate-950 border-rose-500/30",
+          title: "PR Security Gate: BLOCKED",
+          badgeText: "Exit Code 1",
+          sub: "Pull request gatekeeper failed: critical or high severity security findings violate repository policy.",
+          badgeBg: "bg-[#FEF3F2] text-[#B42318] border-[#FECDCA]",
+          borderAccent: "border-l-[#B42318]",
+          iconColor: "text-[#B42318]",
         };
       case "WARN":
         return {
           icon: AlertTriangle,
-          text: "PASSED WITH WARNINGS (Exit 0)",
-          sub: "PR gatekeeper passed: advisory findings noted for review",
-          bg: "bg-amber-500/10 border-amber-500/30 text-amber-400",
-          glow: "shadow-amber-500/20",
-          cardBg: "from-amber-950/40 via-slate-900/60 to-slate-950 border-amber-500/30",
+          title: "PR Security Gate: PASSED WITH WARNINGS",
+          badgeText: "Exit Code 0",
+          sub: "Pull request gatekeeper passed: advisory findings were detected that require engineering review.",
+          badgeBg: "bg-[#FEFCE8] text-[#A16207] border-[#FEF08A]",
+          borderAccent: "border-l-[#A16207]",
+          iconColor: "text-[#A16207]",
         };
       case "PASS":
         return {
           icon: ShieldCheck,
-          text: "PASSED (Exit 0)",
-          sub: "PR gatekeeper passed: zero blocking violations detected",
-          bg: "bg-emerald-500/10 border-emerald-500/30 text-emerald-400",
-          glow: "shadow-emerald-500/20",
-          cardBg: "from-emerald-950/40 via-slate-900/60 to-slate-950 border-emerald-500/30",
+          title: "PR Security Gate: PASSED",
+          badgeText: "Exit Code 0",
+          sub: "Pull request gatekeeper passed: zero blocking violations or policy transgressions detected.",
+          badgeBg: "bg-[#ECFDF3] text-[#18794E] border-[#A6F4C5]",
+          borderAccent: "border-l-[#18794E]",
+          iconColor: "text-[#18794E]",
         };
       default: {
         const isNoScan = reasons.some((r) =>
@@ -407,71 +444,98 @@ export default function Home() {
         );
         return {
           icon: AlertOctagon,
-          text: isNoScan ? "ASSESSMENT NOT PERFORMED (Exit 2)" : "ENGINE ERROR (Exit 2)",
+          title: isNoScan ? "SECURITY ASSESSMENT NOT PERFORMED" : "GATEKEEPER EXECUTION FAULT",
+          badgeText: "Exit Code 2",
           sub: isNoScan
-            ? "PR gatekeeper failed: zero security scanners executed or all scanners disabled"
-            : "Execution fault or configuration error encountered",
-          bg: "bg-red-500/10 border-red-500/30 text-red-400",
-          glow: "shadow-red-500/20",
-          cardBg: "from-red-950/40 via-slate-900/60 to-slate-950 border-red-500/30",
+            ? "Fail-closed trigger: zero security scanners executed or all scanners were disabled."
+            : "Pipeline execution encountered an unhandled error or scanner fault.",
+          badgeBg: "bg-[#FEF2F2] text-[#991B1B] border-[#FECACA]",
+          borderAccent: "border-l-[#991B1B]",
+          iconColor: "text-[#991B1B]",
         };
       }
     }
   };
 
-  const decisionMeta = getDecisionBadge(currentResult.decision, currentResult.reasons);
-  const DecisionIcon = decisionMeta.icon;
+  const decisionStyle = getDecisionStyles(currentResult.decision, currentResult.reasons);
+  const DecisionIcon = decisionStyle.icon;
 
   const getSeverityBadge = (severity: string) => {
     switch (severity) {
       case "CRITICAL":
-        return "bg-rose-500/15 text-rose-300 border-rose-500/30";
+        return "bg-[#FEF3F2] text-[#B42318] border-[#FECDCA]";
       case "HIGH":
-        return "bg-orange-500/15 text-orange-300 border-orange-500/30";
+        return "bg-[#FFF7ED] text-[#C2410C] border-[#FED7AA]";
       case "MEDIUM":
-        return "bg-amber-500/15 text-amber-300 border-amber-500/30";
+        return "bg-[#FEFCE8] text-[#A16207] border-[#FEF08A]";
       case "LOW":
-        return "bg-blue-500/15 text-blue-300 border-blue-500/30";
+        return "bg-[#EFF6FF] text-[#2563A6] border-[#BFDBFE]";
       default:
-        return "bg-slate-500/15 text-slate-300 border-slate-500/30";
+        return "bg-[#F8FAFC] text-[#64748B] border-[#E2E8F0]";
     }
   };
 
   const getScannerBadge = (scanner: string) => {
     switch (scanner) {
       case "trivy":
-        return "bg-cyan-500/10 text-cyan-400 border-cyan-500/20";
+        return "bg-[#F0FDFA] text-[#0D9488] border-[#99F6E4]";
       case "semgrep":
-        return "bg-purple-500/10 text-purple-400 border-purple-500/20";
+        return "bg-[#FAF5FF] text-[#7C3AED] border-[#E9D5FF]";
       case "dependency_review":
-        return "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
+        return "bg-[#F0FDF4] text-[#16A34A] border-[#BBF7D0]";
       default:
-        return "bg-slate-500/10 text-slate-400 border-slate-500/20";
+        return "bg-[#F8FAFC] text-[#475569] border-[#E2E8F0]";
     }
   };
 
+  const getGateCategoryBadge = (category: string) => {
+    switch (category) {
+      case "blocking":
+        return "bg-[#FEF3F2] text-[#B42318] border-[#FECDCA]";
+      case "warning":
+        return "bg-[#FEFCE8] text-[#A16207] border-[#FEF08A]";
+      case "exempted":
+        return "bg-[#F1F5F9] text-[#475569] border-[#CBD5E1]";
+      default:
+        return "bg-[#F8FAFC] text-[#64748B] border-[#E2E8F0]";
+    }
+  };
+
+  const repoMeta = currentResult.policy_metadata?.repository || "RishvinReddy/PipelineShield";
+  const branchMeta = currentResult.policy_metadata?.branch || "main";
+  const commitMeta = currentResult.policy_metadata?.commit || "84cf337";
+
   return (
-    <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 font-sans">
-      {/* Top Header */}
-      <header className="border-b border-slate-800/80 bg-slate-900/60 backdrop-blur-md sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+    <div className="min-h-screen flex flex-col bg-[#F4F6F8] text-[#172435] font-sans">
+      {/* Top Navigation */}
+      <header className="no-print bg-white border-b border-[#E2E8F0] sticky top-0 z-40">
+        <div className="max-w-[1280px] mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <div className="p-2 rounded-xl bg-gradient-to-tr from-emerald-500 to-cyan-500 text-slate-950 shadow-lg shadow-emerald-500/20">
-              <Shield className="w-5 h-5 stroke-[2.5]" />
+            <div className="p-1.5 rounded-md bg-[#0F172A] text-white">
+              <Shield className="w-4 h-4 stroke-[2.5]" />
             </div>
-            <div>
-              <span className="font-bold text-lg tracking-tight bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
+            <div className="flex items-baseline space-x-2">
+              <span className="font-semibold text-base tracking-tight text-[#172435]">
                 PipelineShield
               </span>
-              <span className="ml-2 text-xs font-mono uppercase px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+              <span className="text-[11px] font-mono text-[#64748B] px-1.5 py-0.5 rounded bg-[#F1F5F9] border border-[#E2E8F0]">
                 Gatekeeper v0.1.0
               </span>
             </div>
           </div>
 
-          <div className="flex items-center space-x-4">
-            <label className="cursor-pointer inline-flex items-center space-x-2 text-xs font-medium text-slate-300 hover:text-white bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 rounded-lg px-3 py-1.5 transition-colors">
-              <Upload className="w-3.5 h-3.5 text-cyan-400" />
+          <div className="flex items-center space-x-2.5">
+            <button
+              onClick={() => window.print()}
+              className="inline-flex items-center space-x-1.5 text-xs font-medium text-[#475569] hover:text-[#172435] bg-white hover:bg-[#F8FAFC] border border-[#E2E8F0] rounded-md px-2.5 py-1.5 transition-colors cursor-pointer"
+              title="Print or Export Security Report"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              <span>Print / PDF</span>
+            </button>
+
+            <label className="cursor-pointer inline-flex items-center space-x-1.5 text-xs font-medium text-[#172435] bg-white hover:bg-[#F8FAFC] border border-[#E2E8F0] rounded-md px-2.5 py-1.5 transition-colors shadow-2xs">
+              <Upload className="w-3.5 h-3.5 text-[#0D9488]" />
               <span>Load Report JSON</span>
               <input type="file" accept=".json" onChange={handleFileUpload} className="hidden" />
             </label>
@@ -480,245 +544,358 @@ export default function Home() {
               href="https://github.com/RishvinReddy/PipelineShield"
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center space-x-2 text-xs font-medium text-slate-300 hover:text-white bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 rounded-lg px-3 py-1.5 transition-colors"
+              className="inline-flex items-center space-x-1 text-xs font-medium text-[#475569] hover:text-[#172435] bg-white hover:bg-[#F8FAFC] border border-[#E2E8F0] rounded-md px-2.5 py-1.5 transition-colors"
             >
               <span>GitHub</span>
-              <ExternalLink className="w-3.5 h-3.5" />
+              <ExternalLink className="w-3 h-3 text-[#64748B]" />
             </a>
           </div>
         </div>
       </header>
 
-      {/* Main Container */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-        {/* Report Selector Banner */}
-        <div className="p-4 rounded-xl border border-slate-800 bg-slate-900/40 backdrop-blur-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-          <div className="flex items-center space-x-2">
-            <RefreshCw className="w-4 h-4 text-cyan-400" />
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-              Active Security Report:
-            </span>
-          </div>
+      {/* Main Content Area */}
+      <main className="flex-1 max-w-[1280px] w-full mx-auto px-4 sm:px-6 py-6 space-y-6">
+        {/* Editorial Report Header */}
+        <section className="bg-white rounded-xl border border-[#E2E8F0] p-5 shadow-2xs space-y-4">
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div className="space-y-1.5">
+              <div className="flex items-center space-x-2">
+                <span className="text-[11px] font-semibold tracking-wider uppercase text-[#0D9488] bg-[#F0FDFA] border border-[#99F6E4] px-2 py-0.5 rounded">
+                  Security Assessment Report
+                </span>
+                <span className="text-xs text-[#64748B]">
+                  ISO/IEC 27001 & DevSecOps Automated Gate
+                </span>
+              </div>
+              <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-[#172435]">
+                PipelineShield CI/CD Security Audit
+              </h1>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-[#64748B] pt-1">
+                <span className="inline-flex items-center space-x-1.5 font-mono text-[#172435]">
+                  <FileCode2 className="w-3.5 h-3.5 text-[#64748B]" />
+                  <span>{repoMeta}</span>
+                </span>
+                <span className="inline-flex items-center space-x-1.5 font-mono">
+                  <GitBranch className="w-3.5 h-3.5 text-[#64748B]" />
+                  <span>{branchMeta}</span>
+                </span>
+                <span className="inline-flex items-center space-x-1.5 font-mono">
+                  <GitCommit className="w-3.5 h-3.5 text-[#64748B]" />
+                  <span>{commitMeta}</span>
+                </span>
+                <span className="inline-flex items-center space-x-1.5 font-mono">
+                  <Clock className="w-3.5 h-3.5 text-[#64748B]" />
+                  <span>{currentResult.evaluated_at || "Recent run"}</span>
+                </span>
+              </div>
+            </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            {Object.entries(SAMPLE_REPORTS).map(([key, item]) => (
-              <button
-                key={key}
-                onClick={() => setActiveReportKey(key)}
-                className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-all ${
-                  activeReportKey === key
-                    ? "bg-cyan-500/10 text-cyan-300 border-cyan-500/40 shadow-sm shadow-cyan-500/20"
-                    : "bg-slate-900/60 text-slate-400 border-slate-800 hover:text-slate-200 hover:border-slate-700"
-                }`}
-              >
-                {item.label}
-              </button>
-            ))}
-
-            {customReport && (
-              <button
-                onClick={() => setActiveReportKey("custom")}
-                className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-all ${
-                  activeReportKey === "custom"
-                    ? "bg-purple-500/10 text-purple-300 border-purple-500/40"
-                    : "bg-slate-900/60 text-slate-400 border-slate-800 hover:text-slate-200"
-                }`}
-              >
-                {customFileName ? `Uploaded: ${customFileName}` : "Custom Upload"}
-              </button>
-            )}
+            {/* Quick Demo Switcher (No Print) */}
+            <div className="no-print flex flex-col items-start lg:items-end space-y-2">
+              <span className="text-[11px] font-medium uppercase tracking-wider text-[#64748B]">
+                Switch Assessment Dataset:
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {Object.entries(SAMPLE_REPORTS).map(([key, item]) => (
+                  <button
+                    key={key}
+                    onClick={() => setActiveReportKey(key)}
+                    className={`text-xs px-2.5 py-1 rounded-md border font-medium transition-all cursor-pointer ${
+                      activeReportKey === key
+                        ? "bg-[#0F172A] text-white border-[#0F172A] shadow-2xs"
+                        : "bg-white text-[#475569] border-[#E2E8F0] hover:bg-[#F8FAFC] hover:text-[#172435]"
+                    }`}
+                  >
+                    {item.label.split(":")[0]}
+                  </button>
+                ))}
+                {customReport && (
+                  <button
+                    onClick={() => setActiveReportKey("custom")}
+                    className={`text-xs px-2.5 py-1 rounded-md border font-medium transition-all cursor-pointer ${
+                      activeReportKey === "custom"
+                        ? "bg-[#0F172A] text-white border-[#0F172A]"
+                        : "bg-white text-[#475569] border-[#E2E8F0] hover:bg-[#F8FAFC]"
+                    }`}
+                  >
+                    {customFileName ? `Custom: ${customFileName.slice(0, 16)}...` : "Custom"}
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
-        </div>
+        </section>
 
         {/* Upload Error Banner */}
         {uploadError && (
-          <div className="flex items-center justify-between p-3.5 rounded-xl border border-rose-500/40 bg-rose-950/30 text-rose-300 text-xs">
+          <div className="flex items-center justify-between p-3.5 rounded-lg border border-[#FECDCA] bg-[#FEF3F2] text-[#B42318] text-xs">
             <div className="flex items-center space-x-2">
-              <AlertOctagon className="w-4 h-4 text-rose-400 flex-shrink-0" />
+              <AlertOctagon className="w-4 h-4 flex-shrink-0" />
               <span>{uploadError}</span>
             </div>
             <button
               onClick={() => setUploadError(null)}
-              className="text-rose-400 hover:text-white font-mono text-[11px] underline ml-4"
+              className="text-[#B42318] hover:underline font-mono text-[11px] ml-4 cursor-pointer"
             >
               Dismiss
             </button>
           </div>
         )}
 
-        {/* Data Provenance Indicator */}
-        {isDemoActive ? (
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 rounded-xl border border-cyan-500/30 bg-cyan-950/20 text-cyan-300 text-xs gap-2">
-            <div className="flex items-center space-x-2">
-              <span className="font-semibold uppercase px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-200 text-[10px] tracking-wide">
-                Demonstration Mode
-              </span>
-              <span>Viewing static mock dataset for illustration. Not connected to a live CI telemetry stream.</span>
-            </div>
-            <span className="text-[11px] text-cyan-400/80 font-mono">
-              Evaluated at: {currentResult.evaluated_at || "Demonstration run"}
-            </span>
-          </div>
-        ) : (
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 rounded-xl border border-purple-500/30 bg-purple-950/20 text-purple-300 text-xs gap-2">
-            <div className="flex items-center space-x-2">
-              <span className="font-semibold uppercase px-2 py-0.5 rounded bg-purple-500/20 text-purple-200 text-[10px] tracking-wide">
-                Uploaded Report
-              </span>
-              <span>Viewing user-uploaded artifact: <strong className="text-white">{customFileName}</strong></span>
-            </div>
-            <span className="text-[11px] text-purple-400/80 font-mono">
-              Evaluated at: {currentResult.evaluated_at || "Recent run"}
-            </span>
-          </div>
-        )}
-
-        {/* Gate Decision Hero Card */}
-        <section
-          className={`relative overflow-hidden rounded-2xl border p-8 bg-gradient-to-br ${decisionMeta.cardBg} shadow-2xl transition-all duration-300`}
-        >
-          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-            <div className="space-y-3 max-w-2xl">
-              <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full text-xs font-semibold border uppercase tracking-wider">
-                <DecisionIcon className="w-4 h-4" />
-                <span>{decisionMeta.text}</span>
+        {/* Provenance Notice */}
+        <div className="no-print">
+          {isDemoActive ? (
+            <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-[#FEF08A] bg-[#FEFCE8] text-[#A16207] text-xs">
+              <div className="flex items-center space-x-2">
+                <span className="font-semibold uppercase text-[10px] px-1.5 py-0.5 rounded bg-[#FEF08A] text-[#713F12]">
+                  Demo Mock Data
+                </span>
+                <span>
+                  Viewing static demonstration dataset for illustration. Not connected to an active
+                  CI pipeline stream.
+                </span>
               </div>
+              <span className="text-[11px] font-mono text-[#A16207]">
+                Evaluated: {currentResult.evaluated_at || "Static Mock"}
+              </span>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between px-3.5 py-2 rounded-lg border border-[#A6F4C5] bg-[#ECFDF3] text-[#18794E] text-xs">
+              <div className="flex items-center space-x-2">
+                <span className="font-semibold uppercase text-[10px] px-1.5 py-0.5 rounded bg-[#A6F4C5] text-[#14532D]">
+                  Validated Artifact
+                </span>
+                <span>
+                  Viewing user-uploaded report: <strong>{customFileName}</strong>
+                </span>
+              </div>
+              <span className="text-[11px] font-mono text-[#18794E]">
+                Evaluated: {currentResult.evaluated_at || "User Artifact"}
+              </span>
+            </div>
+          )}
+        </div>
 
-              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
-                DevSecOps Security Gate Verdict
-              </h1>
+        {/* Gate Verdict Card (Hero) */}
+        <section
+          className={`bg-white rounded-xl border border-[#E2E8F0] border-l-4 ${decisionStyle.borderAccent} p-6 shadow-2xs space-y-4`}
+        >
+          <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+            <div className="space-y-2">
+              <div className="flex items-center space-x-2">
+                <DecisionIcon className={`w-5 h-5 ${decisionStyle.iconColor}`} />
+                <h2 className="text-lg font-bold text-[#172435] tracking-tight">
+                  {decisionStyle.title}
+                </h2>
+                <span
+                  className={`text-xs font-mono font-semibold px-2 py-0.5 rounded border ${decisionStyle.badgeBg}`}
+                >
+                  {decisionStyle.badgeText}
+                </span>
+              </div>
+              <p className="text-sm text-[#475569] leading-relaxed max-w-2xl">{decisionStyle.sub}</p>
 
-              <p className="text-sm text-slate-300/90 leading-relaxed">
-                {decisionMeta.sub}
-              </p>
-
-              {/* Policy Reasons */}
-              <div className="space-y-1.5 pt-2">
+              {/* Reasons list */}
+              <div className="pt-2 space-y-1">
                 {currentResult.reasons.map((reason, idx) => (
-                  <div key={idx} className="flex items-center space-x-2 text-xs font-mono text-slate-300">
-                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+                  <div key={idx} className="flex items-start space-x-2 text-xs font-mono text-[#334155]">
+                    <span className="mt-1 w-1.5 h-1.5 rounded-full bg-[#64748B] flex-shrink-0" />
                     <span>{reason}</span>
                   </div>
                 ))}
               </div>
             </div>
 
-            {/* Quick Metrics Stack */}
-            <div className="grid grid-cols-2 gap-3 w-full md:w-auto">
-              <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800/80 min-w-[130px]">
-                <span className="text-[11px] uppercase font-semibold text-slate-400 tracking-wider">
-                  Total Findings
+            {/* Quick Status Tag */}
+            <div className="flex md:flex-col items-end justify-between md:justify-center border-t md:border-t-0 md:border-l border-[#E2E8F0] pt-3 md:pt-0 md:pl-6 text-right">
+              <span className="text-[11px] uppercase tracking-wider font-medium text-[#64748B]">
+                Gate Status
+              </span>
+              <span
+                className={`text-sm font-bold uppercase mt-0.5 ${
+                  currentResult.decision === "BLOCK"
+                    ? "text-[#B42318]"
+                    : currentResult.decision === "PASS"
+                    ? "text-[#18794E]"
+                    : currentResult.decision === "WARN"
+                    ? "text-[#A16207]"
+                    : "text-[#991B1B]"
+                }`}
+              >
+                {currentResult.decision}
+              </span>
+            </div>
+          </div>
+        </section>
+
+        {/* 4 KPI Cards */}
+        <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="bg-white rounded-xl border border-[#E2E8F0] p-4 shadow-2xs">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-[#64748B]">
+              Total Findings
+            </span>
+            <div className="flex items-baseline justify-between mt-1.5">
+              <span className="text-2xl font-bold text-[#172435]">
+                {currentResult.summary.total_findings}
+              </span>
+              <span className="text-xs text-[#64748B]">Across all tools</span>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-[#E2E8F0] p-4 shadow-2xs">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-[#B42318]">
+              Blocking Violations
+            </span>
+            <div className="flex items-baseline justify-between mt-1.5">
+              <span className="text-2xl font-bold text-[#B42318]">
+                {currentResult.summary.blocking_count}
+              </span>
+              <span className="text-xs text-[#B42318]">Policy threshold exceeded</span>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-[#E2E8F0] p-4 shadow-2xs">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-[#A16207]">
+              Advisory Warnings
+            </span>
+            <div className="flex items-baseline justify-between mt-1.5">
+              <span className="text-2xl font-bold text-[#A16207]">
+                {currentResult.summary.warning_count}
+              </span>
+              <span className="text-xs text-[#A16207]">Non-blocking review</span>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-[#E2E8F0] p-4 shadow-2xs">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-[#18794E]">
+              Exempted Findings
+            </span>
+            <div className="flex items-baseline justify-between mt-1.5">
+              <span className="text-2xl font-bold text-[#18794E]">
+                {currentResult.summary.exempted}
+              </span>
+              <span className="text-xs text-[#18794E]">Rule-based waivers</span>
+            </div>
+          </div>
+        </section>
+
+        {/* Scanner Execution Coverage & Severity Distribution Row */}
+        <section className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+          {/* Scanner Coverage (5 cols) */}
+          <div className="lg:col-span-5 bg-white rounded-xl border border-[#E2E8F0] p-4 shadow-2xs space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold uppercase tracking-wider text-[#172435]">
+                Scanner Execution Coverage
+              </span>
+              <span className="text-[11px] text-[#64748B]">Automated CI Tools</span>
+            </div>
+
+            <div className="space-y-2 pt-1">
+              {currentResult.scanner_status && Object.keys(currentResult.scanner_status).length > 0 ? (
+                Object.entries(currentResult.scanner_status).map(([scanner, status]) => {
+                  let statusBadge = "bg-[#F1F5F9] text-[#475569] border-[#E2E8F0]";
+                  let StatusIcon = Check;
+                  if (status === "COMPLETED") {
+                    statusBadge = "bg-[#ECFDF3] text-[#18794E] border-[#A6F4C5]";
+                    StatusIcon = Check;
+                  } else if (status === "DISABLED") {
+                    statusBadge = "bg-[#F8FAFC] text-[#94A3B8] border-[#E2E8F0]";
+                    StatusIcon = XCircle;
+                  } else if (status === "NOT_APPLICABLE") {
+                    statusBadge = "bg-[#EFF6FF] text-[#2563A6] border-[#BFDBFE]";
+                    StatusIcon = Check;
+                  } else if (status === "FAILED") {
+                    statusBadge = "bg-[#FEF3F2] text-[#B42318] border-[#FECDCA]";
+                    StatusIcon = AlertOctagon;
+                  }
+
+                  return (
+                    <div
+                      key={scanner}
+                      className="flex items-center justify-between py-1.5 px-3 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] text-xs font-mono"
+                    >
+                      <span className="font-semibold text-[#172435]">{scanner}</span>
+                      <span
+                        className={`inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[11px] font-semibold border ${statusBadge}`}
+                      >
+                        <StatusIcon className="w-3 h-3" />
+                        <span>{status}</span>
+                      </span>
+                    </div>
+                  );
+                })
+              ) : (
+                <p className="text-xs text-[#64748B]">No scanner metadata reported.</p>
+              )}
+            </div>
+          </div>
+
+          {/* Severity Breakdown (7 cols) */}
+          <div className="lg:col-span-7 bg-white rounded-xl border border-[#E2E8F0] p-4 shadow-2xs space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold uppercase tracking-wider text-[#172435]">
+                Severity Distribution Breakdown
+              </span>
+              <span className="text-[11px] text-[#64748B]">Normalized Spectrum</span>
+            </div>
+
+            <div className="grid grid-cols-5 gap-2 pt-1">
+              <div className="p-2.5 rounded-lg bg-[#FEF3F2] border border-[#FECDCA] text-center">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-[#B42318]">
+                  Critical
                 </span>
-                <p className="text-2xl font-black text-white mt-1">
-                  {currentResult.summary.total_findings}
+                <p className="text-xl font-bold text-[#B42318] mt-0.5">
+                  {currentResult.summary.critical}
                 </p>
               </div>
 
-              <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800/80 min-w-[130px]">
-                <span className="text-[11px] uppercase font-semibold text-rose-400 tracking-wider">
-                  Blocking Violations
+              <div className="p-2.5 rounded-lg bg-[#FFF7ED] border border-[#FED7AA] text-center">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-[#C2410C]">
+                  High
                 </span>
-                <p className="text-2xl font-black text-rose-400 mt-1">
-                  {currentResult.summary.blocking_count}
+                <p className="text-xl font-bold text-[#C2410C] mt-0.5">
+                  {currentResult.summary.high}
                 </p>
               </div>
 
-              <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800/80 min-w-[130px]">
-                <span className="text-[11px] uppercase font-semibold text-amber-400 tracking-wider">
-                  Warnings
+              <div className="p-2.5 rounded-lg bg-[#FEFCE8] border border-[#FEF08A] text-center">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-[#A16207]">
+                  Medium
                 </span>
-                <p className="text-2xl font-black text-amber-400 mt-1">
-                  {currentResult.summary.warning_count}
+                <p className="text-xl font-bold text-[#A16207] mt-0.5">
+                  {currentResult.summary.medium}
                 </p>
               </div>
 
-              <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800/80 min-w-[130px]">
-                <span className="text-[11px] uppercase font-semibold text-emerald-400 tracking-wider">
-                  Exempted
+              <div className="p-2.5 rounded-lg bg-[#EFF6FF] border border-[#BFDBFE] text-center">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-[#2563A6]">
+                  Low
                 </span>
-                <p className="text-2xl font-black text-emerald-400 mt-1">
-                  {currentResult.summary.exempted}
+                <p className="text-xl font-bold text-[#2563A6] mt-0.5">
+                  {currentResult.summary.low}
+                </p>
+              </div>
+
+              <div className="p-2.5 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] text-center">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-[#64748B]">
+                  Info
+                </span>
+                <p className="text-xl font-bold text-[#64748B] mt-0.5">
+                  {currentResult.summary.info}
                 </p>
               </div>
             </div>
           </div>
         </section>
 
-        {/* Scanner Execution Coverage */}
-        {currentResult.scanner_status && Object.keys(currentResult.scanner_status).length > 0 && (
-          <section className="p-4 rounded-xl border border-slate-800/80 bg-slate-900/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <span className="text-xs uppercase font-semibold text-slate-400 tracking-wider">
-              Scanner Execution Coverage
-            </span>
-            <div className="flex flex-wrap items-center gap-2">
-              {Object.entries(currentResult.scanner_status).map(([scanner, status]) => {
-                let badgeClass = "bg-slate-800 text-slate-300 border-slate-700";
-                if (status === "COMPLETED") {
-                  badgeClass = "bg-emerald-950/50 text-emerald-300 border-emerald-500/40";
-                } else if (status === "DISABLED") {
-                  badgeClass = "bg-slate-900 text-slate-400 border-slate-800";
-                } else if (status === "NOT_APPLICABLE") {
-                  badgeClass = "bg-blue-950/50 text-blue-300 border-blue-500/40";
-                } else if (status === "FAILED") {
-                  badgeClass = "bg-rose-950/50 text-rose-300 border-rose-500/40";
-                }
-                return (
-                  <div
-                    key={scanner}
-                    className={`inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-md text-xs font-mono border ${badgeClass}`}
-                  >
-                    <span className="font-semibold">{scanner}:</span>
-                    <span>{status}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-        )}
-
-        {/* Severity Distribution Bar */}
-        <section className="p-6 rounded-xl border border-slate-800/80 bg-slate-900/40 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-300">
-              Severity Distribution Breakdown
-            </h2>
-            <span className="text-xs text-slate-500 font-mono">
-              Evaluated at: {currentResult.evaluated_at || "Recent CI Run"}
-            </span>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-            <div className="p-3 rounded-lg bg-slate-950/60 border border-rose-500/20">
-              <span className="text-xs font-semibold text-rose-400">CRITICAL</span>
-              <p className="text-xl font-bold text-white mt-0.5">{currentResult.summary.critical}</p>
-            </div>
-            <div className="p-3 rounded-lg bg-slate-950/60 border border-orange-500/20">
-              <span className="text-xs font-semibold text-orange-400">HIGH</span>
-              <p className="text-xl font-bold text-white mt-0.5">{currentResult.summary.high}</p>
-            </div>
-            <div className="p-3 rounded-lg bg-slate-950/60 border border-amber-500/20">
-              <span className="text-xs font-semibold text-amber-400">MEDIUM</span>
-              <p className="text-xl font-bold text-white mt-0.5">{currentResult.summary.medium}</p>
-            </div>
-            <div className="p-3 rounded-lg bg-slate-950/60 border border-blue-500/20">
-              <span className="text-xs font-semibold text-blue-400">LOW</span>
-              <p className="text-xl font-bold text-white mt-0.5">{currentResult.summary.low}</p>
-            </div>
-            <div className="p-3 rounded-lg bg-slate-950/60 border border-slate-500/20">
-              <span className="text-xs font-semibold text-slate-400">INFO</span>
-              <p className="text-xl font-bold text-white mt-0.5">{currentResult.summary.info}</p>
-            </div>
-          </div>
-        </section>
-
-        {/* Navigation Tabs */}
-        <div className="border-b border-slate-800 flex space-x-6">
+        {/* Section Navigation Tabs (No Print) */}
+        <div className="no-print border-b border-[#E2E8F0] flex space-x-6">
           <button
             onClick={() => setActiveTab("findings")}
-            className={`pb-3 text-sm font-semibold transition-colors flex items-center space-x-2 border-b-2 ${
+            className={`pb-3 text-sm font-semibold transition-colors flex items-center space-x-2 border-b-2 cursor-pointer ${
               activeTab === "findings"
-                ? "border-cyan-400 text-cyan-400"
-                : "border-transparent text-slate-400 hover:text-slate-200"
+                ? "border-[#0F172A] text-[#0F172A]"
+                : "border-transparent text-[#64748B] hover:text-[#172435]"
             }`}
           >
             <Layers className="w-4 h-4" />
@@ -727,10 +904,10 @@ export default function Home() {
 
           <button
             onClick={() => setActiveTab("policy")}
-            className={`pb-3 text-sm font-semibold transition-colors flex items-center space-x-2 border-b-2 ${
+            className={`pb-3 text-sm font-semibold transition-colors flex items-center space-x-2 border-b-2 cursor-pointer ${
               activeTab === "policy"
-                ? "border-cyan-400 text-cyan-400"
-                : "border-transparent text-slate-400 hover:text-slate-200"
+                ? "border-[#0F172A] text-[#0F172A]"
+                : "border-transparent text-[#64748B] hover:text-[#172435]"
             }`}
           >
             <Lock className="w-4 h-4" />
@@ -739,10 +916,10 @@ export default function Home() {
 
           <button
             onClick={() => setActiveTab("architecture")}
-            className={`pb-3 text-sm font-semibold transition-colors flex items-center space-x-2 border-b-2 ${
+            className={`pb-3 text-sm font-semibold transition-colors flex items-center space-x-2 border-b-2 cursor-pointer ${
               activeTab === "architecture"
-                ? "border-cyan-400 text-cyan-400"
-                : "border-transparent text-slate-400 hover:text-slate-200"
+                ? "border-[#0F172A] text-[#0F172A]"
+                : "border-transparent text-[#64748B] hover:text-[#172435]"
             }`}
           >
             <Terminal className="w-4 h-4" />
@@ -750,53 +927,49 @@ export default function Home() {
           </button>
         </div>
 
-        {/* Tab Content: Findings */}
-        {activeTab === "findings" && (
-          <div className="space-y-6">
-            {/* Search and Filters */}
-            <div className="flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between">
+        {/* TAB 1: FINDINGS EXPLORER */}
+        {(activeTab === "findings" || typeof window === "undefined") && (
+          <section className="space-y-4">
+            {/* Filter & Search Toolbar (No Print) */}
+            <div className="no-print bg-white rounded-xl border border-[#E2E8F0] p-3.5 shadow-2xs flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
               <div className="relative flex-1 max-w-md">
-                <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-500" />
+                <Search className="absolute left-3 top-2.5 w-4 h-4 text-[#94A3B8]" />
                 <input
                   type="text"
                   placeholder="Search by CVE, rule ID, package, or path..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-9 pr-4 py-2 bg-slate-900/60 border border-slate-800 rounded-lg text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500/50 transition-colors"
+                  className="w-full pl-9 pr-4 py-1.5 bg-[#F8FAFC] border border-[#E2E8F0] rounded-md text-xs text-[#172435] placeholder-[#94A3B8] focus:outline-none focus:border-[#0F172A] transition-colors"
                 />
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                <div className="flex items-center space-x-1 text-xs text-slate-400 mr-2">
-                  <span>Severity:</span>
-                </div>
+                <span className="text-[11px] font-medium text-[#64748B]">Severity:</span>
                 {["ALL", "CRITICAL", "HIGH", "MEDIUM", "LOW"].map((sev) => (
                   <button
                     key={sev}
                     onClick={() => setSeverityFilter(sev)}
-                    className={`text-xs px-2.5 py-1 rounded-md border font-medium transition-colors ${
+                    className={`text-[11px] px-2 py-0.5 rounded border font-medium transition-colors cursor-pointer ${
                       severityFilter === sev
-                        ? "bg-slate-700 text-white border-slate-600"
-                        : "bg-slate-900/60 text-slate-400 border-slate-800 hover:text-slate-300"
+                        ? "bg-[#0F172A] text-white border-[#0F172A]"
+                        : "bg-[#F8FAFC] text-[#475569] border-[#E2E8F0] hover:bg-[#F1F5F9]"
                     }`}
                   >
                     {sev}
                   </button>
                 ))}
 
-                <div className="h-4 w-[1px] bg-slate-800 mx-2" />
+                <div className="h-4 w-[1px] bg-[#E2E8F0] mx-1" />
 
-                <div className="flex items-center space-x-1 text-xs text-slate-400 mr-2">
-                  <span>Scanner:</span>
-                </div>
+                <span className="text-[11px] font-medium text-[#64748B]">Scanner:</span>
                 {["ALL", "trivy", "semgrep", "dependency_review"].map((sc) => (
                   <button
                     key={sc}
                     onClick={() => setScannerFilter(sc)}
-                    className={`text-xs px-2.5 py-1 rounded-md border font-medium transition-colors ${
+                    className={`text-[11px] px-2 py-0.5 rounded border font-medium transition-colors cursor-pointer ${
                       scannerFilter === sc
-                        ? "bg-slate-700 text-white border-slate-600"
-                        : "bg-slate-900/60 text-slate-400 border-slate-800 hover:text-slate-300"
+                        ? "bg-[#0F172A] text-white border-[#0F172A]"
+                        : "bg-[#F8FAFC] text-[#475569] border-[#E2E8F0] hover:bg-[#F1F5F9]"
                     }`}
                   >
                     {sc === "dependency_review" ? "dep_review" : sc}
@@ -805,275 +978,367 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Findings List */}
+            {/* Findings Table */}
             {filteredFindings.length === 0 ? (
-              <div className="text-center py-12 border border-dashed border-slate-800 rounded-xl space-y-3">
-                <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto" />
-                <h3 className="text-base font-semibold text-white">No Findings Matching Query</h3>
-                <p className="text-xs text-slate-400">
-                  Try adjusting the severity filter or clearing the search keyword.
+              <div className="bg-white rounded-xl border border-[#E2E8F0] p-12 text-center space-y-2 shadow-2xs">
+                <CheckCircle2 className="w-8 h-8 text-[#18794E] mx-auto" />
+                <h3 className="text-sm font-semibold text-[#172435]">
+                  No Findings Matching Criteria
+                </h3>
+                <p className="text-xs text-[#64748B]">
+                  Try clearing the search query or adjusting severity and scanner filters.
                 </p>
+                {(searchQuery || severityFilter !== "ALL" || scannerFilter !== "ALL") && (
+                  <button
+                    onClick={() => {
+                      setSearchQuery("");
+                      setSeverityFilter("ALL");
+                      setScannerFilter("ALL");
+                    }}
+                    className="mt-2 text-xs font-medium text-[#0D9488] hover:underline cursor-pointer"
+                  >
+                    Reset all filters
+                  </button>
+                )}
               </div>
             ) : (
-              <div className="space-y-3">
-                {filteredFindings.map((finding) => {
-                  const isExpanded = expandedFindingId === finding.id;
-                  const isBlocking = finding.gateCategory === "blocking";
+              <div className="bg-white rounded-xl border border-[#E2E8F0] overflow-hidden shadow-2xs">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-[#F8FAFC] border-b border-[#E2E8F0] text-[#64748B] font-semibold uppercase tracking-wider text-[11px]">
+                        <th className="py-3 px-4 w-28">Severity</th>
+                        <th className="py-3 px-4">Finding / Identifier</th>
+                        <th className="py-3 px-4 w-28">Scanner</th>
+                        <th className="py-3 px-4">Affected Target</th>
+                        <th className="py-3 px-4 w-28 text-center">Gate Status</th>
+                        <th className="py-3 px-4 w-16 text-right no-print">Details</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#E2E8F0]">
+                      {filteredFindings.map((finding) => {
+                        const isExpanded = expandedFindingId === finding.id;
+                        const isBlocking = finding.gateCategory === "blocking";
 
-                  return (
-                    <div
-                      key={finding.id}
-                      className={`rounded-xl border transition-all ${
-                        isBlocking
-                          ? "border-rose-500/30 bg-slate-900/50 hover:border-rose-500/50"
-                          : "border-slate-800/80 bg-slate-900/30 hover:border-slate-700"
-                      }`}
-                    >
-                      <div
-                        onClick={() => setExpandedFindingId(isExpanded ? null : finding.id)}
-                        className="p-4 sm:p-5 flex items-start justify-between cursor-pointer select-none"
-                      >
-                        <div className="space-y-2 max-w-3xl">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span
-                              className={`text-[11px] font-mono uppercase px-2 py-0.5 rounded border font-semibold ${getSeverityBadge(
-                                finding.severity
-                              )}`}
+                        return (
+                          <React.Fragment key={finding.id}>
+                            <tr
+                              onClick={() => setExpandedFindingId(isExpanded ? null : finding.id)}
+                              className={`hover:bg-[#F8FAFC] transition-colors cursor-pointer select-none ${
+                                isBlocking ? "bg-[#FEF3F2]/30" : ""
+                              }`}
                             >
-                              {finding.severity}
-                            </span>
-
-                            <span
-                              className={`text-[11px] font-mono px-2 py-0.5 rounded border ${getScannerBadge(
-                                finding.scanner
-                              )}`}
-                            >
-                              {finding.scanner}
-                            </span>
-
-                            {isBlocking && (
-                              <span className="text-[11px] font-mono uppercase px-2 py-0.5 rounded bg-rose-500/20 text-rose-400 border border-rose-500/40 font-semibold">
-                                BLOCKING
-                              </span>
-                            )}
-
-                            <span className="text-xs font-mono text-slate-400">
-                              {finding.id}
-                            </span>
-                          </div>
-
-                          <h3 className="text-sm font-semibold text-white leading-snug">
-                            {finding.title}
-                          </h3>
-
-                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400">
-                            {finding.file_path && (
-                              <span className="inline-flex items-center space-x-1 font-mono text-slate-300">
-                                <FileText className="w-3.5 h-3.5 text-slate-500" />
-                                <span>{finding.file_path}</span>
-                                {finding.line_number && <span>:{finding.line_number}</span>}
-                              </span>
-                            )}
-
-                            {finding.package_name && (
-                              <span className="font-mono text-cyan-400">
-                                pkg: {finding.package_name}
-                                {finding.installed_version && ` (${finding.installed_version})`}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="flex items-center space-x-2 text-slate-500">
-                          <ChevronRight
-                            className={`w-5 h-5 transition-transform ${isExpanded ? "rotate-90" : ""}`}
-                          />
-                        </div>
-                      </div>
-
-                      {/* Expanded Details Drawer */}
-                      {isExpanded && (
-                        <div className="px-5 pb-5 pt-2 border-t border-slate-800/60 bg-slate-950/40 rounded-b-xl space-y-4 text-xs">
-                          <div>
-                            <span className="text-slate-400 uppercase font-semibold text-[10px] tracking-wider">
-                              Description
-                            </span>
-                            <p className="mt-1 text-slate-300 leading-relaxed">
-                              {finding.description}
-                            </p>
-                          </div>
-
-                          {finding.remediation && (
-                            <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 space-y-1">
-                              <span className="text-emerald-400 font-semibold uppercase text-[10px] tracking-wider flex items-center space-x-1">
-                                <CheckCircle2 className="w-3 h-3" />
-                                <span>Remediation Recommendation</span>
-                              </span>
-                              <p className="text-emerald-200/90 font-mono">
-                                {finding.remediation}
-                              </p>
-                            </div>
-                          )}
-
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
-                            {finding.fixed_version && (
-                              <div>
-                                <span className="text-slate-400 font-semibold uppercase text-[10px] tracking-wider">
-                                  Fixed Version
+                              {/* Severity */}
+                              <td className="py-3.5 px-4 align-top">
+                                <span
+                                  className={`inline-block font-mono text-[10px] uppercase font-bold px-2 py-0.5 rounded border ${getSeverityBadge(
+                                    finding.severity
+                                  )}`}
+                                >
+                                  {finding.severity}
                                 </span>
-                                <p className="mt-1 font-mono text-slate-200">
-                                  {finding.fixed_version}
-                                </p>
-                              </div>
-                            )}
+                              </td>
 
-                            {finding.cwe_ids && finding.cwe_ids.length > 0 && (
-                              <div>
-                                <span className="text-slate-400 font-semibold uppercase text-[10px] tracking-wider">
-                                  CWE Identifiers
-                                </span>
-                                <div className="mt-1 flex flex-wrap gap-1.5">
-                                  {finding.cwe_ids.map((cwe: string) => (
-                                    <span
-                                      key={cwe}
-                                      className="px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300 font-mono text-[11px]"
-                                    >
-                                      {cwe}
-                                    </span>
-                                  ))}
+                              {/* Title & ID */}
+                              <td className="py-3.5 px-4 align-top max-w-sm">
+                                <div className="space-y-0.5">
+                                  <span className="font-semibold text-[#172435] block leading-snug">
+                                    {finding.title}
+                                  </span>
+                                  <span className="font-mono text-[11px] text-[#64748B] block truncate">
+                                    {finding.id}
+                                  </span>
                                 </div>
-                              </div>
+                              </td>
+
+                              {/* Scanner */}
+                              <td className="py-3.5 px-4 align-top">
+                                <span
+                                  className={`inline-block font-mono text-[10px] px-2 py-0.5 rounded border ${getScannerBadge(
+                                    finding.scanner
+                                  )}`}
+                                >
+                                  {finding.scanner === "dependency_review"
+                                    ? "dep_review"
+                                    : finding.scanner}
+                                </span>
+                              </td>
+
+                              {/* Affected Target */}
+                              <td className="py-3.5 px-4 align-top">
+                                <div className="space-y-0.5 font-mono text-[11px]">
+                                  {finding.file_path && (
+                                    <div className="flex items-center space-x-1 text-[#334155]">
+                                      <FileText className="w-3 h-3 text-[#94A3B8] flex-shrink-0" />
+                                      <span className="truncate">
+                                        {finding.file_path}
+                                        {finding.line_number ? `:${finding.line_number}` : ""}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {finding.package_name && (
+                                    <div className="text-[#0D9488]">
+                                      pkg: {finding.package_name}
+                                      {finding.installed_version &&
+                                        ` (${finding.installed_version})`}
+                                    </div>
+                                  )}
+                                </div>
+                              </td>
+
+                              {/* Gate Status */}
+                              <td className="py-3.5 px-4 align-top text-center">
+                                <span
+                                  className={`inline-block font-mono text-[10px] font-bold uppercase px-2 py-0.5 rounded border ${getGateCategoryBadge(
+                                    finding.gateCategory
+                                  )}`}
+                                >
+                                  {finding.gateCategory}
+                                </span>
+                              </td>
+
+                              {/* Expand Chevron (No Print) */}
+                              <td className="py-3.5 px-4 align-top text-right no-print">
+                                {isExpanded ? (
+                                  <ChevronUp className="w-4 h-4 text-[#64748B] inline" />
+                                ) : (
+                                  <ChevronDown className="w-4 h-4 text-[#94A3B8] inline" />
+                                )}
+                              </td>
+                            </tr>
+
+                            {/* Expanded Technical Details Drawer */}
+                            {(isExpanded || (typeof window !== "undefined" && window.matchMedia?.("print").matches)) && (
+                              <tr className="bg-[#F8FAFC] border-t border-[#E2E8F0]">
+                                <td colSpan={6} className="p-4 space-y-3">
+                                  <div>
+                                    <span className="text-[10px] uppercase font-semibold tracking-wider text-[#64748B]">
+                                      Vulnerability Description
+                                    </span>
+                                    <p className="mt-1 text-xs text-[#334155] leading-relaxed">
+                                      {finding.description}
+                                    </p>
+                                  </div>
+
+                                  {finding.remediation && (
+                                    <div className="p-3 rounded-lg bg-[#ECFDF3] border border-[#A6F4C5] space-y-1">
+                                      <span className="text-[10px] font-bold uppercase tracking-wider text-[#18794E] flex items-center space-x-1">
+                                        <CheckCircle2 className="w-3.5 h-3.5" />
+                                        <span>Remediation Recommendation</span>
+                                      </span>
+                                      <p className="text-xs text-[#14532D] font-mono leading-relaxed">
+                                        {finding.remediation}
+                                      </p>
+                                    </div>
+                                  )}
+
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-1 text-xs">
+                                    {finding.fixed_version && (
+                                      <div className="p-2 rounded bg-white border border-[#E2E8F0]">
+                                        <span className="text-[10px] font-semibold uppercase text-[#64748B]">
+                                          Fixed Version
+                                        </span>
+                                        <p className="font-mono text-[#172435] mt-0.5">
+                                          {finding.fixed_version}
+                                        </p>
+                                      </div>
+                                    )}
+
+                                    {finding.installed_version && (
+                                      <div className="p-2 rounded bg-white border border-[#E2E8F0]">
+                                        <span className="text-[10px] font-semibold uppercase text-[#64748B]">
+                                          Installed Version
+                                        </span>
+                                        <p className="font-mono text-[#172435] mt-0.5">
+                                          {finding.installed_version}
+                                        </p>
+                                      </div>
+                                    )}
+
+                                    {finding.cwe_ids && finding.cwe_ids.length > 0 && (
+                                      <div className="p-2 rounded bg-white border border-[#E2E8F0] col-span-1 sm:col-span-2 lg:col-span-1">
+                                        <span className="text-[10px] font-semibold uppercase text-[#64748B]">
+                                          CWE Identifiers
+                                        </span>
+                                        <div className="flex flex-wrap gap-1 mt-0.5">
+                                          {finding.cwe_ids.map((cwe) => (
+                                            <span
+                                              key={cwe}
+                                              className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-[#F1F5F9] text-[#334155] border border-[#E2E8F0]"
+                                            >
+                                              {cwe}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
                             )}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+                          </React.Fragment>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
-          </div>
+          </section>
         )}
 
-        {/* Tab Content: Policy */}
+        {/* TAB 2: SECURITY POLICY RULES */}
         {activeTab === "policy" && (
-          <div className="space-y-6">
-            <div className="p-6 rounded-xl border border-slate-800 bg-slate-900/40 space-y-4">
+          <section className="space-y-6">
+            <div className="bg-white rounded-xl border border-[#E2E8F0] p-6 shadow-2xs space-y-4">
               <div className="flex items-center space-x-2">
-                <Lock className="w-5 h-5 text-cyan-400" />
-                <h3 className="text-base font-bold text-white">Declarative Policy Configuration</h3>
+                <Lock className="w-5 h-5 text-[#0F172A]" />
+                <h3 className="text-base font-bold text-[#172435]">
+                  Repository Security Policy Rules
+                </h3>
               </div>
-              <p className="text-xs text-slate-400">
-                Loaded directly from <code className="text-cyan-400">config/policy.yaml</code> in the repository root.
+              <p className="text-xs text-[#64748B]">
+                Enforced declaratively from <code className="text-[#0D9488]">config/policy.yaml</code> across all pull requests and branch merges.
               </p>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
-                <div className="p-4 rounded-lg bg-slate-950/70 border border-slate-800 space-y-3">
-                  <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-300">
+                {/* Severity Enforcement Table */}
+                <div className="space-y-3">
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-[#64748B]">
                     Severity Threshold Enforcement
                   </h4>
-                  <div className="space-y-2 text-xs font-mono">
-                    <div className="flex items-center justify-between p-2 rounded bg-rose-500/10 border border-rose-500/20 text-rose-300">
-                      <span>CRITICAL</span>
-                      <span className="font-bold">BLOCK</span>
-                    </div>
-                    <div className="flex items-center justify-between p-2 rounded bg-orange-500/10 border border-orange-500/20 text-orange-300">
-                      <span>HIGH</span>
-                      <span className="font-bold">BLOCK</span>
-                    </div>
-                    <div className="flex items-center justify-between p-2 rounded bg-amber-500/10 border border-amber-500/20 text-amber-300">
-                      <span>MEDIUM</span>
-                      <span className="font-bold">WARN</span>
-                    </div>
-                    <div className="flex items-center justify-between p-2 rounded bg-blue-500/10 border border-blue-500/20 text-blue-300">
-                      <span>LOW</span>
-                      <span className="font-bold">PASS</span>
-                    </div>
-                    <div className="flex items-center justify-between p-2 rounded bg-slate-800/40 border border-slate-700/40 text-slate-300">
-                      <span>INFO</span>
-                      <span className="font-bold">PASS</span>
-                    </div>
+                  <div className="border border-[#E2E8F0] rounded-lg overflow-hidden">
+                    <table className="w-full text-xs text-left">
+                      <thead className="bg-[#F8FAFC] border-b border-[#E2E8F0] text-[11px] uppercase font-semibold text-[#64748B]">
+                        <tr>
+                          <th className="py-2.5 px-3">Severity</th>
+                          <th className="py-2.5 px-3">Enforcement Action</th>
+                          <th className="py-2.5 px-3">CI Exit Code</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#E2E8F0] font-mono">
+                        <tr className="bg-[#FEF3F2]/40">
+                          <td className="py-2 px-3 font-bold text-[#B42318]">CRITICAL</td>
+                          <td className="py-2 px-3 text-[#B42318] font-semibold">BLOCK</td>
+                          <td className="py-2 px-3 text-[#64748B]">Exit 1</td>
+                        </tr>
+                        <tr className="bg-[#FFF7ED]/40">
+                          <td className="py-2 px-3 font-bold text-[#C2410C]">HIGH</td>
+                          <td className="py-2 px-3 text-[#C2410C] font-semibold">BLOCK</td>
+                          <td className="py-2 px-3 text-[#64748B]">Exit 1</td>
+                        </tr>
+                        <tr className="bg-[#FEFCE8]/40">
+                          <td className="py-2 px-3 font-bold text-[#A16207]">MEDIUM</td>
+                          <td className="py-2 px-3 text-[#A16207] font-semibold">WARN</td>
+                          <td className="py-2 px-3 text-[#64748B]">Exit 0</td>
+                        </tr>
+                        <tr>
+                          <td className="py-2 px-3 font-bold text-[#2563A6]">LOW</td>
+                          <td className="py-2 px-3 text-[#18794E] font-semibold">PASS</td>
+                          <td className="py-2 px-3 text-[#64748B]">Exit 0</td>
+                        </tr>
+                        <tr>
+                          <td className="py-2 px-3 font-bold text-[#64748B]">INFO</td>
+                          <td className="py-2 px-3 text-[#18794E] font-semibold">PASS</td>
+                          <td className="py-2 px-3 text-[#64748B]">Exit 0</td>
+                        </tr>
+                      </tbody>
+                    </table>
                   </div>
                 </div>
 
-                <div className="p-4 rounded-lg bg-slate-950/70 border border-slate-800 space-y-3">
-                  <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-300">
-                    Scanner Integration Rules
+                {/* Scanner Configuration Rules */}
+                <div className="space-y-3">
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-[#64748B]">
+                    Multi-Scanner Configuration
                   </h4>
-                  <div className="space-y-2 text-xs">
-                    <div className="p-2.5 rounded bg-slate-900 border border-slate-800">
-                      <span className="font-semibold text-cyan-400">Trivy Vulnerabilities</span>
-                      <p className="text-slate-400 mt-0.5">Scans fs, container images, and package locks. Fails on CRITICAL and HIGH CVEs.</p>
+                  <div className="space-y-2.5 text-xs">
+                    <div className="p-3 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC]">
+                      <span className="font-semibold text-[#0D9488]">Trivy Vulnerabilities & Misconfigs</span>
+                      <p className="text-[#64748B] mt-0.5">
+                        Scans file systems, locks, and manifests for CVEs, configuration flaws, and secrets.
+                      </p>
                     </div>
-                    <div className="p-2.5 rounded bg-slate-900 border border-slate-800">
-                      <span className="font-semibold text-purple-400">Semgrep SAST Rulesets</span>
-                      <p className="text-slate-400 mt-0.5">Enforces OWASP Top 10, security audit patterns, and hardcoded secret detection.</p>
+                    <div className="p-3 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC]">
+                      <span className="font-semibold text-[#7C3AED]">Semgrep SAST Rulesets</span>
+                      <p className="text-[#64748B] mt-0.5">
+                        Applies OWASP Top 10, security-audit, and secrets detection without broad script exemptions.
+                      </p>
                     </div>
-                    <div className="p-2.5 rounded bg-slate-900 border border-slate-800">
-                      <span className="font-semibold text-emerald-400">Dependency Review</span>
-                      <p className="text-slate-400 mt-0.5">Denies GPL-3.0/AGPL-3.0 copyleft licenses and blocks high/critical vulnerable additions.</p>
+                    <div className="p-3 rounded-lg border border-[#E2E8F0] bg-[#F8FAFC]">
+                      <span className="font-semibold text-[#16A34A]">GitHub Dependency Review</span>
+                      <p className="text-[#64748B] mt-0.5">
+                        Denies copyleft licenses (GPL-3.0, AGPL-3.0) and blocks newly introduced vulnerable packages.
+                      </p>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
+          </section>
         )}
 
-        {/* Tab Content: Architecture */}
+        {/* TAB 3: PIPELINE ARCHITECTURE */}
         {activeTab === "architecture" && (
-          <div className="space-y-6">
-            <div className="p-6 rounded-xl border border-slate-800 bg-slate-900/40 space-y-4">
+          <section className="space-y-6">
+            <div className="bg-white rounded-xl border border-[#E2E8F0] p-6 shadow-2xs space-y-4">
               <div className="flex items-center space-x-2">
-                <Terminal className="w-5 h-5 text-cyan-400" />
-                <h3 className="text-base font-bold text-white">Automated DevSecOps Gatekeeper Lifecycle</h3>
+                <Terminal className="w-5 h-5 text-[#0F172A]" />
+                <h3 className="text-base font-bold text-[#172435]">
+                  Automated DevSecOps Gatekeeper Architecture
+                </h3>
               </div>
+              <p className="text-xs text-[#64748B]">
+                Fail-closed lifecycle orchestrating multi-scanner telemetry into authoritative gate decisions.
+              </p>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-2">
-                <div className="p-4 rounded-lg bg-slate-950/60 border border-slate-800 space-y-2">
-                  <span className="text-xs font-mono text-emerald-400">Phase 01</span>
-                  <h4 className="font-semibold text-sm text-white">Pull Request Trigger</h4>
-                  <p className="text-xs text-slate-400 leading-relaxed">
-                    Developer pushes changes. GitHub Actions workflow launches parallel security scanner jobs.
+                <div className="p-4 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] space-y-2">
+                  <span className="text-[11px] font-mono font-bold text-[#0D9488]">Phase 01</span>
+                  <h4 className="font-bold text-xs text-[#172435]">Pull Request Trigger</h4>
+                  <p className="text-xs text-[#64748B] leading-relaxed">
+                    Developer pushes changes or opens PR. GitHub Actions initiates parallel scanner jobs.
                   </p>
                 </div>
 
-                <div className="p-4 rounded-lg bg-slate-950/60 border border-slate-800 space-y-2">
-                  <span className="text-xs font-mono text-cyan-400">Phase 02</span>
-                  <h4 className="font-semibold text-sm text-white">Multi-Scanner Execution</h4>
-                  <p className="text-xs text-slate-400 leading-relaxed">
-                    Trivy scans dependencies, Semgrep analyzes source code patterns, and Dependency Review validates package licenses.
+                <div className="p-4 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] space-y-2">
+                  <span className="text-[11px] font-mono font-bold text-[#7C3AED]">Phase 02</span>
+                  <h4 className="font-bold text-xs text-[#172435]">Multi-Scanner Execution</h4>
+                  <p className="text-xs text-[#64748B] leading-relaxed">
+                    Trivy, Semgrep, and Dependency Review generate heterogeneous raw JSON security outputs.
                   </p>
                 </div>
 
-                <div className="p-4 rounded-lg bg-slate-950/60 border border-slate-800 space-y-2">
-                  <span className="text-xs font-mono text-purple-400">Phase 03</span>
-                  <h4 className="font-semibold text-sm text-white">Policy Normalization</h4>
-                  <p className="text-xs text-slate-400 leading-relaxed">
-                    Heterogeneous scanner JSONs are ingested into normalized Finding objects with strict validation.
+                <div className="p-4 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] space-y-2">
+                  <span className="text-[11px] font-mono font-bold text-[#2563A6]">Phase 03</span>
+                  <h4 className="font-bold text-xs text-[#172435]">Policy Normalization</h4>
+                  <p className="text-xs text-[#64748B] leading-relaxed">
+                    Python policy engine ingests and normalizes raw reports into strongly typed Finding models.
                   </p>
                 </div>
 
-                <div className="p-4 rounded-lg bg-slate-950/60 border border-slate-800 space-y-2">
-                  <span className="text-xs font-mono text-rose-400">Phase 04</span>
-                  <h4 className="font-semibold text-sm text-white">Security Gate Verdict</h4>
-                  <p className="text-xs text-slate-400 leading-relaxed">
-                    PolicyEngine outputs PASS (0), WARN (0), or BLOCK (1). Exit code 1 fails CI and blocks PR merge.
+                <div className="p-4 rounded-lg bg-[#F8FAFC] border border-[#E2E8F0] space-y-2">
+                  <span className="text-[11px] font-mono font-bold text-[#B42318]">Phase 04</span>
+                  <h4 className="font-bold text-xs text-[#172435]">Gate Verdict Enforcement</h4>
+                  <p className="text-xs text-[#64748B] leading-relaxed">
+                    Outputs PASS (0), WARN (0), BLOCK (1), or ERROR (2). Fails CI closed on violations or scanner errors.
                   </p>
                 </div>
               </div>
             </div>
-          </div>
+          </section>
         )}
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-slate-900 bg-slate-950 py-6 mt-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 gap-4">
+      <footer className="no-print border-t border-[#E2E8F0] bg-white py-5 mt-10">
+        <div className="max-w-[1280px] mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between text-xs text-[#64748B] gap-4">
           <p>© 2026 PipelineShield. Released under the MIT License.</p>
-          <div className="flex items-center space-x-6">
+          <div className="flex items-center space-x-4 font-mono text-[11px]">
             <span>Next.js App Router</span>
+            <span>•</span>
             <span>Python Policy Engine</span>
+            <span>•</span>
             <span>Zero Paid Infrastructure</span>
           </div>
         </div>

@@ -1,8 +1,13 @@
 @import "tailwindcss";
 
 :root {
-  --background: #020617;
-  --foreground: #f8fafc;
+  --background: #F4F6F8;
+  --foreground: #172435;
+  --card: #FFFFFF;
+  --border: #E2E8F0;
+  --muted: #64748B;
+  --accent-navy: #0F172A;
+  --accent-teal: #0D9488;
 }
 
 @theme inline {
@@ -15,4 +20,30 @@
 body {
   background: var(--background);
   color: var(--foreground);
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+/* Print Stylesheet for Formal Security Audits */
+@media print {
+  body {
+    background: #FFFFFF !important;
+    color: #172435 !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+  .print-page-break {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+  table {
+    page-break-inside: auto;
+  }
+  tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
 }
