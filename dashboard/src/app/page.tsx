@@ -157,6 +157,11 @@ const SAMPLE_REPORTS: Record<string, { label: string; tag: string; isDemo: boole
       ],
       exempted_findings: [],
       evaluated_at: "2026-10-30T18:00:00Z",
+      scanner_status: {
+        trivy: "COMPLETED",
+        semgrep: "COMPLETED",
+        dependency_review: "COMPLETED",
+      },
       policy_metadata: {
         name: "PipelineShield Default Security Policy",
         mode: "strict",
@@ -213,6 +218,11 @@ const SAMPLE_REPORTS: Record<string, { label: string; tag: string; isDemo: boole
       ],
       exempted_findings: [],
       evaluated_at: "2026-10-30T17:45:00Z",
+      scanner_status: {
+        trivy: "COMPLETED",
+        semgrep: "COMPLETED",
+        dependency_review: "NOT_APPLICABLE",
+      },
       policy_metadata: {
         name: "PipelineShield Default Security Policy",
         mode: "strict",
@@ -242,6 +252,11 @@ const SAMPLE_REPORTS: Record<string, { label: string; tag: string; isDemo: boole
       advisory_findings: [],
       exempted_findings: [],
       evaluated_at: "2026-10-30T17:30:00Z",
+      scanner_status: {
+        trivy: "COMPLETED",
+        semgrep: "COMPLETED",
+        dependency_review: "COMPLETED",
+      },
       policy_metadata: {
         name: "PipelineShield Default Security Policy",
         mode: "strict",
@@ -621,6 +636,38 @@ export default function Home() {
             </div>
           </div>
         </section>
+
+        {/* Scanner Execution Coverage */}
+        {currentResult.scanner_status && Object.keys(currentResult.scanner_status).length > 0 && (
+          <section className="p-4 rounded-xl border border-slate-800/80 bg-slate-900/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <span className="text-xs uppercase font-semibold text-slate-400 tracking-wider">
+              Scanner Execution Coverage
+            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              {Object.entries(currentResult.scanner_status).map(([scanner, status]) => {
+                let badgeClass = "bg-slate-800 text-slate-300 border-slate-700";
+                if (status === "COMPLETED") {
+                  badgeClass = "bg-emerald-950/50 text-emerald-300 border-emerald-500/40";
+                } else if (status === "DISABLED") {
+                  badgeClass = "bg-slate-900 text-slate-400 border-slate-800";
+                } else if (status === "NOT_APPLICABLE") {
+                  badgeClass = "bg-blue-950/50 text-blue-300 border-blue-500/40";
+                } else if (status === "FAILED") {
+                  badgeClass = "bg-rose-950/50 text-rose-300 border-rose-500/40";
+                }
+                return (
+                  <div
+                    key={scanner}
+                    className={`inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-md text-xs font-mono border ${badgeClass}`}
+                  >
+                    <span className="font-semibold">{scanner}:</span>
+                    <span>{status}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
 
         {/* Severity Distribution Bar */}
         <section className="p-6 rounded-xl border border-slate-800/80 bg-slate-900/40 space-y-4">

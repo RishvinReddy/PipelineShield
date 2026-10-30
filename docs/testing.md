@@ -29,7 +29,7 @@ source .venv/bin/activate
 pytest --cov=pipelineshield --cov-report=term-missing
 ```
 
-### Test Suite Structure (252 passing tests, 93% coverage)
+### Test Suite Structure (258 passing tests, 94% coverage)
 
 - `tests/test_imports.py`: Verifies module imports, package structure, and top-level exports.
 - `tests/test_models.py`: Validates Pydantic data schemas, enums, severity ordering, and immutability.

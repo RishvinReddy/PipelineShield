@@ -14,6 +14,12 @@ export interface ValidationResult {
 export const VALID_DECISIONS = ["PASS", "WARN", "BLOCK", "ERROR"] as const;
 export const VALID_SEVERITIES = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"] as const;
 export const VALID_SCANNERS = ["trivy", "semgrep", "dependency_review", "manual"] as const;
+export const VALID_SCANNER_STATUSES = [
+  "COMPLETED",
+  "DISABLED",
+  "NOT_APPLICABLE",
+  "FAILED",
+] as const;
 
 export const SUMMARY_NUMERIC_FIELDS = [
   "total_findings",
@@ -28,7 +34,7 @@ export const SUMMARY_NUMERIC_FIELDS = [
 ] as const;
 
 /**
- * Validate an individual Finding record.
+ * Validate an individual Finding record against the Python Finding schema.
  */
 export function validateFinding(
   f: unknown,
@@ -70,7 +76,46 @@ export function validateFinding(
     };
   }
 
-  // Optional cwe_ids validation
+  // Description (optional string, defaults to "")
+  if (rec.description !== undefined && rec.description !== null && typeof rec.description !== "string") {
+    return { valid: false, error: `${listName}[${index}]: 'description' must be a string.` };
+  }
+
+  // Optional string fields (nullable)
+  const nullableStrings = [
+    "file_path",
+    "package_name",
+    "installed_version",
+    "fixed_version",
+    "license",
+    "remediation",
+  ] as const;
+
+  for (const field of nullableStrings) {
+    const val = rec[field];
+    if (val !== undefined && val !== null && typeof val !== "string") {
+      return {
+        valid: false,
+        error: `${listName}[${index}]: '${field}' must be a string or null.`,
+      };
+    }
+  }
+
+  // Optional line_number validation (nullable non-negative integer)
+  if (rec.line_number !== undefined && rec.line_number !== null) {
+    if (
+      typeof rec.line_number !== "number" ||
+      !Number.isInteger(rec.line_number) ||
+      rec.line_number < 0
+    ) {
+      return {
+        valid: false,
+        error: `${listName}[${index}]: 'line_number' must be a non-negative integer or null.`,
+      };
+    }
+  }
+
+  // Optional cwe_ids validation (array of strings)
   if (rec.cwe_ids !== undefined && rec.cwe_ids !== null) {
     if (!Array.isArray(rec.cwe_ids) || !rec.cwe_ids.every((c) => typeof c === "string")) {
       return {
@@ -80,16 +125,12 @@ export function validateFinding(
     }
   }
 
-  // Optional line_number validation
-  if (rec.line_number !== undefined && rec.line_number !== null) {
-    if (
-      typeof rec.line_number !== "number" ||
-      !Number.isInteger(rec.line_number) ||
-      rec.line_number < 0
-    ) {
+  // Optional metadata validation (object, not array)
+  if (rec.metadata !== undefined && rec.metadata !== null) {
+    if (typeof rec.metadata !== "object" || Array.isArray(rec.metadata)) {
       return {
         valid: false,
-        error: `${listName}[${index}]: 'line_number' must be a non-negative integer.`,
+        error: `${listName}[${index}]: 'metadata' must be an object.`,
       };
     }
   }
@@ -158,12 +199,28 @@ export function validateReportSchema(obj: unknown): ValidationResult {
     if (typeof rec.scanner_status !== "object" || Array.isArray(rec.scanner_status)) {
       return { valid: false, error: "'scanner_status' must be an object." };
     }
+    const statusObj = rec.scanner_status as Record<string, unknown>;
+    for (const [scanner, statusVal] of Object.entries(statusObj)) {
+      if (typeof scanner !== "string" || !scanner.trim()) {
+        return { valid: false, error: "scanner_status keys must be non-empty strings." };
+      }
+      if (
+        typeof statusVal !== "string" ||
+        !VALID_SCANNER_STATUSES.includes(statusVal.toUpperCase() as (typeof VALID_SCANNER_STATUSES)[number])
+      ) {
+        return {
+          valid: false,
+          error: `scanner_status['${scanner}'] has invalid status '${statusVal}'. Allowed: ${VALID_SCANNER_STATUSES.join(", ")}.`,
+        };
+      }
+    }
   }
 
   // Validate finding arrays and their items
   const findingArrays: Array<[string, unknown]> = [
     ["blocking_findings", rec.blocking_findings],
     ["warning_findings", rec.warning_findings],
+    ["advisory_findings", rec.advisory_findings],
     ["exempted_findings", rec.exempted_findings],
     ["findings", rec.findings],
   ];
@@ -179,6 +236,79 @@ export function validateReportSchema(obj: unknown): ValidationResult {
           return itemVal;
         }
       }
+    }
+  }
+
+  // Consistency checks:
+  // 1. blocking_findings.length must match summary.blocking_count
+  if (rec.blocking_findings !== undefined && rec.blocking_findings !== null) {
+    const bfLen = (rec.blocking_findings as unknown[]).length;
+    if (summary.blocking_count !== bfLen) {
+      return {
+        valid: false,
+        error: `summary.blocking_count (${summary.blocking_count}) does not match blocking_findings.length (${bfLen}).`,
+      };
+    }
+  }
+
+  // 2. warning_findings.length must match summary.warning_count
+  if (rec.warning_findings !== undefined && rec.warning_findings !== null) {
+    const wfLen = (rec.warning_findings as unknown[]).length;
+    if (summary.warning_count !== wfLen) {
+      return {
+        valid: false,
+        error: `summary.warning_count (${summary.warning_count}) does not match warning_findings.length (${wfLen}).`,
+      };
+    }
+  }
+
+  // 3. exempted_findings.length must match summary.exempted
+  if (rec.exempted_findings !== undefined && rec.exempted_findings !== null) {
+    const efLen = (rec.exempted_findings as unknown[]).length;
+    if (summary.exempted !== efLen) {
+      return {
+        valid: false,
+        error: `summary.exempted (${summary.exempted}) does not match exempted_findings.length (${efLen}).`,
+      };
+    }
+  }
+
+  // 4. If authoritative 'findings' array is present, check total and severity distribution
+  if (Array.isArray(rec.findings)) {
+    const fArr = rec.findings as Array<Record<string, unknown>>;
+    if (summary.total_findings !== fArr.length) {
+      return {
+        valid: false,
+        error: `summary.total_findings (${summary.total_findings}) does not match findings.length (${fArr.length}).`,
+      };
+    }
+
+    let crit = 0;
+    let high = 0;
+    let med = 0;
+    let low = 0;
+    let info = 0;
+
+    for (const f of fArr) {
+      const s = String(f.severity || "").toUpperCase();
+      if (s === "CRITICAL") crit++;
+      else if (s === "HIGH") high++;
+      else if (s === "MEDIUM") med++;
+      else if (s === "LOW") low++;
+      else if (s === "INFO") info++;
+    }
+
+    if (
+      summary.critical !== crit ||
+      summary.high !== high ||
+      summary.medium !== med ||
+      summary.low !== low ||
+      summary.info !== info
+    ) {
+      return {
+        valid: false,
+        error: `Summary severity counts do not match findings collection. Expected: {CRITICAL: ${crit}, HIGH: ${high}, MEDIUM: ${med}, LOW: ${low}, INFO: ${info}}, Got: {critical: ${summary.critical}, high: ${summary.high}, medium: ${summary.medium}, low: ${summary.low}, info: ${summary.info}}`,
+      };
     }
   }
 

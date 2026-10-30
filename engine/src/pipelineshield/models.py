@@ -61,6 +61,20 @@ class GateDecision(str, Enum):
     ERROR = "ERROR"
 
 
+class ScannerStatus(str, Enum):
+    """Scanner execution status.
+
+    - COMPLETED: Scanner executed successfully and produced output.
+    - DISABLED: Scanner was disabled by policy configuration.
+    - NOT_APPLICABLE: Scanner was not applicable to the CI event (e.g. Dependency Review on non-PR event).
+    - FAILED: Scanner execution failed or required output was missing.
+    """
+    COMPLETED = "COMPLETED"
+    DISABLED = "DISABLED"
+    NOT_APPLICABLE = "NOT_APPLICABLE"
+    FAILED = "FAILED"
+
+
 class Finding(BaseModel):
     """Normalized security finding representation.
 
@@ -355,6 +369,7 @@ class EvaluationResult(BaseModel):
     reasons: List[str] = Field(default_factory=list)
     errors: List[str] = Field(default_factory=list, description="Engine errors that caused ERROR decisions")
     scanner_status: Dict[str, str] = Field(
-        default_factory=dict, description="Execution status per scanner ('enabled' or 'disabled')"
+        default_factory=dict,
+        description="Execution status per scanner ('COMPLETED', 'DISABLED', 'NOT_APPLICABLE', 'FAILED')",
     )
 

@@ -429,9 +429,9 @@ class TestScannerSpecificPolicy:
         result = engine.evaluate([finding])
         assert result.decision == GateDecision.PASS
         assert len(result.blocking_findings) == 0
-        assert result.scanner_status["trivy"] == "disabled"
-        assert result.scanner_status["semgrep"] == "enabled"
-        assert result.scanner_status["dependency_review"] == "enabled"
+        assert result.scanner_status["trivy"] == "DISABLED"
+        assert result.scanner_status["semgrep"] == "COMPLETED"
+        assert result.scanner_status["dependency_review"] == "COMPLETED"
         assert any("trivy' is disabled" in r.lower() for r in result.reasons)
 
     def test_disabled_semgrep_findings_ignored_and_status_recorded(self):
@@ -445,7 +445,7 @@ class TestScannerSpecificPolicy:
         finding = make_finding(Severity.CRITICAL, scanner=ScannerType.SEMGREP)
         result = engine.evaluate([finding])
         assert result.decision == GateDecision.PASS
-        assert result.scanner_status["semgrep"] == "disabled"
+        assert result.scanner_status["semgrep"] == "DISABLED"
         assert any("semgrep' is disabled" in r.lower() for r in result.reasons)
 
     def test_disabled_dependency_review_findings_ignored_and_status_recorded(self):
@@ -459,7 +459,7 @@ class TestScannerSpecificPolicy:
         finding = make_finding(Severity.CRITICAL, scanner=ScannerType.DEPENDENCY_REVIEW)
         result = engine.evaluate([finding])
         assert result.decision == GateDecision.PASS
-        assert result.scanner_status["dependency_review"] == "disabled"
+        assert result.scanner_status["dependency_review"] == "DISABLED"
         assert any("dependency_review' is disabled" in r.lower() for r in result.reasons)
 
     def test_all_scanners_disabled_produces_pass_with_disabled_statuses(self):
@@ -480,12 +480,11 @@ class TestScannerSpecificPolicy:
         result = engine.evaluate([])
         assert result.decision == GateDecision.PASS
         assert result.scanner_status == {
-            "trivy": "disabled",
-            "semgrep": "disabled",
-            "dependency_review": "disabled",
+            "trivy": "DISABLED",
+            "semgrep": "DISABLED",
+            "dependency_review": "DISABLED",
         }
-        disabled_reasons = [r for r in result.reasons if "disabled" in r]
-        assert len(disabled_reasons) == 3
+        assert any("all security scanners are disabled" in r.lower() for r in result.reasons)
 
     def test_enabled_scanners_distinguished_from_zero_findings(self):
         from pipelineshield.models import (
@@ -506,9 +505,25 @@ class TestScannerSpecificPolicy:
         result = engine.evaluate([])
         assert result.decision == GateDecision.PASS
         assert result.summary.total_findings == 0
-        assert result.scanner_status["trivy"] == "enabled"
-        assert result.scanner_status["semgrep"] == "enabled"
-        assert result.scanner_status["dependency_review"] == "disabled"
+        assert result.scanner_status["trivy"] == "COMPLETED"
+        assert result.scanner_status["semgrep"] == "COMPLETED"
+        assert result.scanner_status["dependency_review"] == "DISABLED"
+
+    def test_scanner_failure_triggers_error_decision_fail_closed(self):
+        config = PolicyConfig()
+        engine = PolicyEngine(config)
+        result = engine.evaluate([], scanner_status={"trivy": "FAILED", "semgrep": "COMPLETED", "dependency_review": "NOT_APPLICABLE"})
+        assert result.decision == GateDecision.ERROR
+        assert result.scanner_status["trivy"] == "FAILED"
+        assert any("failed to execute" in r.lower() for r in result.reasons)
+
+    def test_not_applicable_scanner_status_recorded_in_reasons(self):
+        config = PolicyConfig()
+        engine = PolicyEngine(config)
+        result = engine.evaluate([], scanner_status={"trivy": "COMPLETED", "semgrep": "COMPLETED", "dependency_review": "NOT_APPLICABLE"})
+        assert result.decision == GateDecision.PASS
+        assert result.scanner_status["dependency_review"] == "NOT_APPLICABLE"
+        assert any("not applicable" in r.lower() for r in result.reasons)
 
 
     def test_trivy_ignore_unfixed_skips_unfixed_vulns(self):

@@ -9,7 +9,7 @@ Design principles:
 """
 
 import fnmatch
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from pipelineshield.models import (
     EnforcementMode,
@@ -18,6 +18,7 @@ from pipelineshield.models import (
     Finding,
     GateDecision,
     PolicyConfig,
+    ScannerStatus,
     ScannerType,
     Severity,
 )
@@ -99,7 +100,11 @@ class PolicyEngine:
     # Core evaluation
     # ------------------------------------------------------------------
 
-    def evaluate(self, findings: List[Finding]) -> EvaluationResult:
+    def evaluate(
+        self,
+        findings: List[Finding],
+        scanner_status: Optional[Dict[str, str]] = None,
+    ) -> EvaluationResult:
         """Evaluate a list of normalized findings against policy rules.
 
         Args:
@@ -107,16 +112,12 @@ class PolicyEngine:
                       An empty list is valid and produces PASS.
                       This method must only be called with an explicitly supplied
                       findings list — never with a default empty list from missing input.
+            scanner_status: Optional explicit scanner execution status map.
 
         Returns:
             EvaluationResult with decision, summary, and classified findings.
         """
-        summary = EvaluationSummary(total_findings=len(findings))
-        blocking: List[Finding] = []
-        warning: List[Finding] = []
-        exempted: List[Finding] = []
-        reasons: List[str] = []
-
+        active_findings: List[Finding] = []
         for finding in findings:
             # 1. Scanner enablement check
             if finding.scanner == ScannerType.TRIVY and not self.config.scanners.trivy.enabled:
@@ -125,8 +126,15 @@ class PolicyEngine:
                 continue
             if finding.scanner == ScannerType.DEPENDENCY_REVIEW and not self.config.scanners.dependency_review.enabled:
                 continue
+            active_findings.append(finding)
 
-            # Count by severity (active non-disabled findings)
+        summary = EvaluationSummary(total_findings=len(active_findings))
+        blocking: List[Finding] = []
+        warning: List[Finding] = []
+        exempted: List[Finding] = []
+        reasons: List[str] = []
+
+        for finding in active_findings:
             if finding.severity == Severity.CRITICAL:
                 summary.critical += 1
             elif finding.severity == Severity.HIGH:
@@ -228,32 +236,56 @@ class PolicyEngine:
         # ------------------------------------------------------------------
         # Determine scanner execution status
         # ------------------------------------------------------------------
-        scanner_status = {
-            "trivy": "enabled" if self.config.scanners.trivy.enabled else "disabled",
-            "semgrep": "enabled" if self.config.scanners.semgrep.enabled else "disabled",
-            "dependency_review": "enabled" if self.config.scanners.dependency_review.enabled else "disabled",
-        }
-        for sc_name, sc_stat in scanner_status.items():
-            if sc_stat == "disabled":
-                reason_disabled = f"Scanner '{sc_name}' is disabled by policy configuration."
-                if reason_disabled not in reasons:
-                    reasons.append(reason_disabled)
+        final_scanner_status: Dict[str, str] = {}
+        for sc_name in ("trivy", "semgrep", "dependency_review"):
+            sc_cfg = getattr(self.config.scanners, sc_name)
+            if not sc_cfg.enabled:
+                final_scanner_status[sc_name] = ScannerStatus.DISABLED.value
+            elif scanner_status and sc_name in scanner_status:
+                final_scanner_status[sc_name] = scanner_status[sc_name]
+            else:
+                final_scanner_status[sc_name] = ScannerStatus.COMPLETED.value
+
+        all_disabled = all(
+            stat == ScannerStatus.DISABLED.value for stat in final_scanner_status.values()
+        )
+        if all_disabled:
+            reason_all_disabled = (
+                "All security scanners are disabled by policy configuration. "
+                "No security scanning was performed."
+            )
+            if reason_all_disabled not in reasons:
+                reasons.append(reason_all_disabled)
+        else:
+            for sc_name, sc_stat in sorted(final_scanner_status.items()):
+                if sc_stat == ScannerStatus.DISABLED.value:
+                    reason_disabled = f"Scanner '{sc_name}' is disabled by policy configuration."
+                    if reason_disabled not in reasons:
+                        reasons.append(reason_disabled)
+                elif sc_stat == ScannerStatus.NOT_APPLICABLE.value:
+                    reason_na = f"Scanner '{sc_name}' was not applicable to this event."
+                    if reason_na not in reasons:
+                        reasons.append(reason_na)
+                elif sc_stat == ScannerStatus.FAILED.value:
+                    reason_failed = f"Scanner '{sc_name}' failed to execute or produce valid output."
+                    if reason_failed not in reasons:
+                        reasons.append(reason_failed)
 
         # ------------------------------------------------------------------
         # Determine overall decision
         # ------------------------------------------------------------------
-        decision = self._determine_decision(blocking, warning, reasons)
+        decision = self._determine_decision(blocking, warning, reasons, final_scanner_status)
 
         return EvaluationResult(
             decision=decision,
             policy_mode=self.config.mode,
             summary=summary,
-            findings=findings,
+            findings=active_findings,
             blocking_findings=blocking,
             warning_findings=warning,
             exempted_findings=exempted,
             reasons=reasons,
-            scanner_status=scanner_status,
+            scanner_status=final_scanner_status,
         )
 
     def _determine_decision(
@@ -261,18 +293,25 @@ class PolicyEngine:
         blocking: List[Finding],
         warning: List[Finding],
         reasons: List[str],
+        scanner_status: Optional[Dict[str, str]] = None,
     ) -> GateDecision:
-        """Determine the final gate decision from classified finding lists.
+        """Determine the final gate decision from classified finding lists and scanner statuses.
 
         Decision matrix (in evaluation order):
+        0. Any scanner execution FAILED → ERROR (fail-closed)
         1. Blocking findings exist AND (fail_on_block OR mode is STRICT) → BLOCK
         2. Warning findings exist AND fail_on_warn → BLOCK
         3. Warning findings exist → WARN
         4. No blocking or warning findings → PASS
 
-        Monitor mode always produces PASS regardless of findings
-        (enforcement-disabled observation mode).
+        Monitor mode produces PASS for findings, but scanner failure still triggers ERROR.
         """
+        # 0. Scanner failure check — failed scanner execution must fail closed
+        if scanner_status and any(
+            stat == ScannerStatus.FAILED.value for stat in scanner_status.values()
+        ):
+            return GateDecision.ERROR
+
         mode = self.config.mode
 
         if mode == EnforcementMode.MONITOR:
@@ -314,7 +353,9 @@ class PolicyEngine:
         return GateDecision.PASS
 
     def evaluate_with_error_guard(
-        self, findings: List[Finding]
+        self,
+        findings: List[Finding],
+        scanner_status: Optional[Dict[str, str]] = None,
     ) -> EvaluationResult:
         """Run evaluate() wrapped in a defensive error guard.
 
@@ -324,11 +365,14 @@ class PolicyEngine:
 
         Args:
             findings: List of normalized Finding objects.
+            scanner_status: Optional explicit scanner execution status map.
 
         Returns:
             EvaluationResult — always returns, never raises.
         """
         try:
+            if scanner_status is not None:
+                return self.evaluate(findings, scanner_status=scanner_status)
             return self.evaluate(findings)
         except Exception as exc:
             error_msg = f"Policy engine encountered an unexpected error: {exc}"
@@ -338,4 +382,5 @@ class PolicyEngine:
                 summary=EvaluationSummary(),
                 reasons=["ERROR: Policy engine failed. Gate closed for safety."],
                 errors=[error_msg],
+                scanner_status=scanner_status or {},
             )

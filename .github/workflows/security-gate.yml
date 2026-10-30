@@ -44,7 +44,7 @@ jobs:
           retention-days: 7
 
   dashboard-build:
-    name: Dashboard Lint & Build Verification
+    name: Dashboard Lint, Contract & Build Verification
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -52,16 +52,33 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      - name: Set up Node.js 20
+      - name: Set up Python 3.11 for contract generation
+        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install engine dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ./engine
+
+      - name: Set up Node.js 22
         uses: actions/setup-node@1e60f6391960146644d41f2d1200fcdcc04fa3e6 # v4.2.0
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "npm"
           cache-dependency-path: dashboard/package-lock.json
 
       - name: Install dashboard dependencies
         working-directory: dashboard
         run: npm ci
+
+      - name: Run Dashboard Contract Tests
+        working-directory: dashboard
+        run: npm run test:contract
+        env:
+          PYTHON: python3
 
       - name: Run ESLint
         working-directory: dashboard
@@ -124,9 +141,18 @@ jobs:
           fi
           pip install semgrep==1.183.0
 
-          # Build ruleset arguments configured in policy.yaml
-          SEMGREP_RULES=$(python3 -c "from pipelineshield.config import load_policy; p = load_policy('config/policy.yaml'); print(' '.join(f'--config \"{r}\"' for r in p.scanners.semgrep.rulesets))")
-          eval "semgrep scan $SEMGREP_RULES --json --output reports/semgrep.json"
+          # Execute Semgrep using safe argument array without shell eval
+          python3 -c "
+          import subprocess, sys
+          from pipelineshield.config import load_policy
+          p = load_policy('config/policy.yaml')
+          cmd = ['semgrep', 'scan']
+          for r in p.scanners.semgrep.rulesets:
+              cmd.extend(['--config', r])
+          cmd.extend(['--json', '--output', 'reports/semgrep.json'])
+          res = subprocess.run(cmd)
+          sys.exit(res.returncode)
+          "
           python3 -c "import json; json.load(open('reports/semgrep.json'))"
 
       - name: Check Dependency Review Policy Enablement
@@ -176,6 +202,7 @@ jobs:
 
           python -m pipelineshield.cli \
             --policy config/policy.yaml \
+            --event-name "${{ github.event_name }}" \
             $TRIVY_FLAG \
             $SEMGREP_FLAG \
             $DEP_FLAG \
