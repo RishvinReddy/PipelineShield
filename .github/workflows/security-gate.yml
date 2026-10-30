@@ -44,7 +44,7 @@ jobs:
           retention-days: 7
 
   dashboard-build:
-    name: Dashboard Lint & Build Verification
+    name: Dashboard Lint, Contract & Build Verification
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -52,16 +52,33 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      - name: Set up Node.js 20
-        uses: actions/setup-node@1e60f6391960146644d41f2d1200fcdcc04fa3e6 # v4.2.0
+      - name: Set up Python 3.11 for contract generation
+        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
         with:
-          node-version: "20"
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install engine dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ./engine
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0
+        with:
+          node-version: "22"
           cache: "npm"
           cache-dependency-path: dashboard/package-lock.json
 
       - name: Install dashboard dependencies
         working-directory: dashboard
         run: npm ci
+
+      - name: Run Dashboard Contract Tests
+        working-directory: dashboard
+        run: npm run test:contract
+        env:
+          PYTHON: python3
 
       - name: Run ESLint
         working-directory: dashboard
@@ -98,35 +115,86 @@ jobs:
 
       - name: Install & Run Trivy Vulnerability Scanner
         run: |
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
-          trivy fs --exit-code 0 --format json --output reports/trivy.json .
+          TRIVY_ENABLED=$(python3 -c "from pipelineshield.config import load_policy; p = load_policy('config/policy.yaml'); print('true' if p.scanners.trivy.enabled else 'false')")
+          if [ "$TRIVY_ENABLED" != "true" ]; then
+            echo "Trivy scanner is disabled in policy.yaml — skipping execution."
+            exit 0
+          fi
+          TRIVY_VERSION="0.76.1"
+          TRIVY_SHA256="c7cbe3137fb8a48a17574bede3dd6beb16742d1e9772929940fc90082c39d9c0"
+          curl -sSL -O "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          echo "${TRIVY_SHA256}  trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" | sha256sum --check
+          tar -xzf "trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" -C /usr/local/bin trivy
+          rm -f "trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+
+          # Extract scan types configured in policy.yaml
+          TRIVY_SCANNERS=$(python3 -c "from pipelineshield.config import load_policy; p = load_policy('config/policy.yaml'); print(','.join(p.scanners.trivy.scan_types))")
+          trivy fs --scanners "$TRIVY_SCANNERS" --exit-code 0 --format json --output reports/trivy.json .
           python3 -c "import json; json.load(open('reports/trivy.json'))"
 
       - name: Install & Run Semgrep SAST
         run: |
-          pip install semgrep
-          semgrep scan --config "p/security-audit" --config "p/secrets" --config "p/owasp-top-ten" --json --output reports/semgrep.json
+          SEMGREP_ENABLED=$(python3 -c "from pipelineshield.config import load_policy; p = load_policy('config/policy.yaml'); print('true' if p.scanners.semgrep.enabled else 'false')")
+          if [ "$SEMGREP_ENABLED" != "true" ]; then
+            echo "Semgrep scanner is disabled in policy.yaml — skipping execution."
+            exit 0
+          fi
+          pip install semgrep==1.183.0
+
+          # Execute Semgrep using safe argument array without shell eval
+          python3 -c "
+          import subprocess, sys
+          from pipelineshield.config import load_policy
+          p = load_policy('config/policy.yaml')
+          cmd = ['semgrep', 'scan']
+          for r in p.scanners.semgrep.rulesets:
+              cmd.extend(['--config', r])
+          cmd.extend(['--json', '--output', 'reports/semgrep.json'])
+          res = subprocess.run(cmd)
+          sys.exit(res.returncode)
+          "
           python3 -c "import json; json.load(open('reports/semgrep.json'))"
+
+      - name: Check Dependency Review Policy Enablement
+        id: check-dep-review
+        if: github.event_name == 'pull_request'
+        run: |
+          DEP_ENABLED=$(python3 -c "from pipelineshield.config import load_policy; p = load_policy('config/policy.yaml'); print('true' if p.scanners.dependency_review.enabled else 'false')")
+          echo "enabled=$DEP_ENABLED" >> "$GITHUB_OUTPUT"
 
       - name: Run GitHub Dependency Review
         id: dependency-review
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && steps.check-dep-review.outputs.enabled == 'true'
         uses: actions/dependency-review-action@3c4e3dcb1aa7874d2c16be7d79418e9b7efd6261 # v4.8.2
         with:
-          fail-on-severity: none
+          warn-only: true
           license-check: false
 
       - name: Export Dependency Review findings
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && steps.check-dep-review.outputs.enabled == 'true'
         env:
           DEP_CHANGES: ${{ steps.dependency-review.outputs.dependency-changes }}
         run: |
-          echo "$DEP_CHANGES" > reports/dependency-review.json
+          if [ -z "${DEP_CHANGES// }" ]; then
+            echo "[]" > reports/dependency-review.json
+          else
+            echo "$DEP_CHANGES" > reports/dependency-review.json
+          fi
           python3 -c "import json; json.load(open('reports/dependency-review.json'))"
 
       - name: Run PipelineShield Security Gate
         id: gate
         run: |
+          TRIVY_FLAG=""
+          if [ -f reports/trivy.json ]; then
+            TRIVY_FLAG="--trivy reports/trivy.json"
+          fi
+
+          SEMGREP_FLAG=""
+          if [ -f reports/semgrep.json ]; then
+            SEMGREP_FLAG="--semgrep reports/semgrep.json"
+          fi
+
           DEP_FLAG=""
           if [ -f reports/dependency-review.json ]; then
             DEP_FLAG="--dependency-review reports/dependency-review.json"
@@ -134,11 +202,13 @@ jobs:
 
           python -m pipelineshield.cli \
             --policy config/policy.yaml \
-            --trivy reports/trivy.json \
-            --semgrep reports/semgrep.json \
+            --event-name "${{ github.event_name }}" \
+            $TRIVY_FLAG \
+            $SEMGREP_FLAG \
             $DEP_FLAG \
             --output reports/security-summary.json \
             --summary-md "$GITHUB_STEP_SUMMARY"
+
 
       - name: Upload Security Reports Artifact
         uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1

@@ -1,0 +1,59 @@
+{
+  "SchemaVersion": 2,
+  "ArtifactName": ".",
+  "ArtifactType": "filesystem",
+  "Results": [
+    {
+      "Target": "requirements.txt",
+      "Class": "lang-pkgs",
+      "Type": "pip",
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "CVE-2022-42966",
+          "PkgName": "cryptography",
+          "InstalledVersion": "3.4.8",
+          "FixedVersion": "38.0.3",
+          "Severity": "CRITICAL",
+          "Title": "Memory corruption in cryptography",
+          "Description": "An issue in cryptography allows integer overflow.",
+          "CweIDs": ["CWE-208"]
+        }
+      ]
+    },
+    {
+      "Target": "Dockerfile",
+      "Class": "config",
+      "Type": "dockerfile",
+      "Misconfigurations": [
+        {
+          "ID": "DS002",
+          "AVDID": "AVD-DS-0002",
+          "Title": "Image user should not be 'root'",
+          "Description": "Running containers with 'root' user can lead to a container breakout.",
+          "Message": "Specify at least 1 USER command in Dockerfile",
+          "Resolution": "Add 'USER nonroot' to Dockerfile",
+          "Severity": "HIGH",
+          "CauseMetadata": {
+            "StartLine": 1,
+            "EndLine": 1
+          }
+        }
+      ]
+    },
+    {
+      "Target": ".env",
+      "Class": "secret",
+      "Secrets": [
+        {
+          "RuleID": "github-pat",
+          "Category": "GitHub",
+          "Severity": "CRITICAL",
+          "Title": "GitHub Personal Access Token",
+          "StartLine": 5,
+          "EndLine": 5,
+          "Match": "ghp_1234567890abcdefghijklmnopqrstuvwxyz"
+        }
+      ]
+    }
+  ]
+}

@@ -54,9 +54,9 @@ PipelineShield operates as an automated DevSecOps gatekeeper embedded into GitHu
 ## 2. Core Components
 
 ### 2.1 Scanner Matrix
-- **Trivy**: Scans OS packages and application dependencies for known CVEs, misconfigurations, and container vulnerabilities.
-- **Semgrep Community Edition**: Performs static application security testing (SAST) targeting dangerous sink functions, injection vulnerabilities, and hardcoded secrets.
-- **GitHub Dependency Review**: Evaluates dependency diffs introduced by PRs via `actions/dependency-review-action`, exporting findings for policy evaluation of vulnerabilities and software licenses.
+- **Trivy**: Scans OS packages and application dependencies for known CVEs, misconfigurations, and container vulnerabilities. Pinned to **v0.76.1** and verified against official SHA256 checksums (`c7cbe3137fb8a48a17574bede3dd6beb16742d1e9772929940fc90082c39d9c0`). Scan types (`vuln`, `config`, `secret`) are driven dynamically by `config/policy.yaml`.
+- **Semgrep Community Edition**: Performs static application security testing (SAST) targeting dangerous sink functions, injection vulnerabilities, and hardcoded secrets. Pinned to **v1.183.0**. Rulesets are passed dynamically from `config/policy.yaml`.
+- **GitHub Dependency Review**: Evaluates dependency diffs introduced by PRs via pinned `actions/dependency-review-action@3c4e3dcb1aa7874d2c16be7d79418e9b7efd6261` with `warn-only: true`. Filters dependencies by `change_type`: newly added dependencies (`"added"`) are evaluated for introduction-risk, while removed dependencies (`"removed"`) are skipped so remediating a vulnerable package never blocks a PR.
 
 ### 2.2 Normalization Layer (`pipelineshield.normalizer`)
 Raw JSON scanner payloads differ substantially in format, terminology, and severity labeling. The normalizer maps heterogeneous formats into a standardized `Finding` schema:
@@ -78,9 +78,10 @@ The policy engine evaluates all normalized findings against declarative rules co
   - `strict`: Gate fails with exit code 1 if any blocking findings exist.
   - `permissive`: Gate issues warnings but exits with code 0 unless `fail_on_warn: true`.
   - `monitor`: Gate records all findings and exits with code 0 for telemetry observation.
-- **Scanner Configuration**:
+- **Scanner Configuration & Override Hierarchy**:
   - Typed models for each scanner (`trivy`, `semgrep`, `dependency_review`). Unknown configuration keys are rejected.
   - Scanner enablement flag (`enabled: false` bypasses scanner findings).
+  - **Authoritative Scanner Overrides**: Scanner-specific severity settings (`fail_on_cve_severity`, `fail_on_severity`, `deny_severities`) act as authoritative overrides for their respective scanners. Findings excluded from scanner-specific fail lists downgrade to `WARN` rather than forcing `BLOCK`. When omitted (`None`), global policy `thresholds` govern.
   - Trivy `ignore_unfixed`: Ignores CVEs without available patch versions.
   - Dependency Review `allow_licenses` and `deny_licenses`: Enforces license compliance.
 - **Evaluation Decisions**:

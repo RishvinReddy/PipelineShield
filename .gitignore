@@ -20,8 +20,9 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+/lib/
+/lib64/
+!dashboard/src/lib/
 parts/
 sdist/
 var/
@@ -94,3 +95,4 @@ Thumbs.db
 *.swp
 *.swo
 *~
+image.png

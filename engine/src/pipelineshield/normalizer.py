@@ -170,60 +170,158 @@ def normalize_trivy_json(data: Any) -> List[Finding]:
             )
 
         target = str(result.get("Target", "unknown"))
+
+        # 1. Vulnerabilities
         vulns = result.get("Vulnerabilities")
-        if vulns is None:
-            # Clean target — no vulnerabilities
-            continue
-        if not isinstance(vulns, list):
-            raise NormalizationError(
-                f"Trivy: Results[{result_idx}].Vulnerabilities must be a list. "
-                f"Got: {type(vulns).__name__}"
-            )
-
-        for vuln_idx, vuln in enumerate(vulns):
-            if not isinstance(vuln, dict):
+        if vulns is not None:
+            if not isinstance(vulns, list):
                 raise NormalizationError(
-                    f"Trivy: Results[{result_idx}].Vulnerabilities[{vuln_idx}] "
-                    f"must be a mapping. Got: {type(vuln).__name__}"
+                    f"Trivy: Results[{result_idx}].Vulnerabilities must be a list. "
+                    f"Got: {type(vulns).__name__}"
                 )
-            ctx = f"Trivy Results[{result_idx}].Vulnerabilities[{vuln_idx}]"
-            cve_id = _safe_str(vuln.get("VulnerabilityID"), "VulnerabilityID", ctx)
-            severity = _map_trivy_severity(
-                _safe_str(vuln.get("Severity"), "Severity", ctx)
-            )
-            title = vuln.get("Title") or cve_id
-            description = vuln.get("Description") or ""
-            pkg_name = vuln.get("PkgName") or None
-            installed_ver = vuln.get("InstalledVersion") or None
-            fixed_ver = vuln.get("FixedVersion") or None
-            cwe_ids = vuln.get("CweIDs") or []
-            if not isinstance(cwe_ids, list):
-                cwe_ids = []
 
-            remediation: str | None = None
-            if fixed_ver:
-                remediation = f"Upgrade {pkg_name or 'package'} to version {fixed_ver} or later."
-
-            findings.append(
-                Finding(
-                    id=cve_id,
-                    scanner=ScannerType.TRIVY,
-                    title=str(title),
-                    description=str(description),
-                    severity=severity,
-                    file_path=target,
-                    package_name=pkg_name,
-                    installed_version=installed_ver,
-                    fixed_version=fixed_ver,
-                    cwe_ids=[str(c) for c in cwe_ids],
-                    remediation=remediation,
-                    metadata={
-                        "references": vuln.get("References") or [],
-                        "data_source": vuln.get("DataSource"),
-                        "result_type": result.get("Type"),
-                    },
+            for vuln_idx, vuln in enumerate(vulns):
+                if not isinstance(vuln, dict):
+                    raise NormalizationError(
+                        f"Trivy: Results[{result_idx}].Vulnerabilities[{vuln_idx}] "
+                        f"must be a mapping. Got: {type(vuln).__name__}"
+                    )
+                ctx = f"Trivy Results[{result_idx}].Vulnerabilities[{vuln_idx}]"
+                cve_id = _safe_str(vuln.get("VulnerabilityID"), "VulnerabilityID", ctx)
+                severity = _map_trivy_severity(
+                    _safe_str(vuln.get("Severity"), "Severity", ctx)
                 )
-            )
+                title = vuln.get("Title") or cve_id
+                description = vuln.get("Description") or ""
+                pkg_name = vuln.get("PkgName") or None
+                installed_ver = vuln.get("InstalledVersion") or None
+                fixed_ver = vuln.get("FixedVersion") or None
+                cwe_ids = vuln.get("CweIDs") or []
+                if not isinstance(cwe_ids, list):
+                    cwe_ids = []
+
+                remediation: str | None = None
+                if fixed_ver:
+                    remediation = f"Upgrade {pkg_name or 'package'} to version {fixed_ver} or later."
+
+                findings.append(
+                    Finding(
+                        id=cve_id,
+                        scanner=ScannerType.TRIVY,
+                        title=str(title),
+                        description=str(description),
+                        severity=severity,
+                        file_path=target,
+                        package_name=pkg_name,
+                        installed_version=installed_ver,
+                        fixed_version=fixed_ver,
+                        cwe_ids=[str(c) for c in cwe_ids],
+                        remediation=remediation,
+                        metadata={
+                            "references": vuln.get("References") or [],
+                            "data_source": vuln.get("DataSource"),
+                            "result_type": result.get("Type"),
+                            "finding_type": "vulnerability",
+                        },
+                    )
+                )
+
+        # 2. Misconfigurations
+        misconfs = result.get("Misconfigurations")
+        if misconfs is not None:
+            if not isinstance(misconfs, list):
+                raise NormalizationError(
+                    f"Trivy: Results[{result_idx}].Misconfigurations must be a list. "
+                    f"Got: {type(misconfs).__name__}"
+                )
+
+            for m_idx, m in enumerate(misconfs):
+                if not isinstance(m, dict):
+                    raise NormalizationError(
+                        f"Trivy: Results[{result_idx}].Misconfigurations[{m_idx}] "
+                        f"must be a mapping. Got: {type(m).__name__}"
+                    )
+                ctx = f"Trivy Results[{result_idx}].Misconfigurations[{m_idx}]"
+                m_id = _safe_str(m.get("ID") or m.get("AVDID") or m.get("RuleID"), "ID", ctx)
+                severity = _map_trivy_severity(
+                    _safe_str(m.get("Severity"), "Severity", ctx)
+                )
+                title = m.get("Title") or m_id
+                msg = m.get("Message") or ""
+                description = m.get("Description") or msg or str(title)
+                resolution = m.get("Resolution") or None
+                cause = m.get("CauseMetadata") or {}
+                line_number: int | None = None
+                if isinstance(cause, dict):
+                    sl = cause.get("StartLine")
+                    if isinstance(sl, int) and sl > 0:
+                        line_number = sl
+
+                findings.append(
+                    Finding(
+                        id=m_id,
+                        scanner=ScannerType.TRIVY,
+                        title=str(title),
+                        description=str(description),
+                        severity=severity,
+                        file_path=target,
+                        line_number=line_number,
+                        remediation=str(resolution) if resolution else None,
+                        metadata={
+                            "primary_url": m.get("PrimaryURL"),
+                            "references": m.get("References") or [],
+                            "status": m.get("Status"),
+                            "finding_type": "misconfiguration",
+                            "message": msg,
+                        },
+                    )
+                )
+
+        # 3. Secrets
+        secrets = result.get("Secrets")
+        if secrets is not None:
+            if not isinstance(secrets, list):
+                raise NormalizationError(
+                    f"Trivy: Results[{result_idx}].Secrets must be a list. "
+                    f"Got: {type(secrets).__name__}"
+                )
+
+            for s_idx, s in enumerate(secrets):
+                if not isinstance(s, dict):
+                    raise NormalizationError(
+                        f"Trivy: Results[{result_idx}].Secrets[{s_idx}] "
+                        f"must be a mapping. Got: {type(s).__name__}"
+                    )
+                ctx = f"Trivy Results[{result_idx}].Secrets[{s_idx}]"
+                rule_id = _safe_str(s.get("RuleID") or s.get("ID"), "RuleID", ctx)
+                severity = _map_trivy_severity(
+                    _safe_str(s.get("Severity"), "Severity", ctx)
+                )
+                title = s.get("Title") or f"Exposed secret: {rule_id}"
+                start_line: int | None = None
+                sl = s.get("StartLine")
+                if isinstance(sl, int) and sl > 0:
+                    start_line = sl
+
+                category = s.get("Category") or "Secret"
+                desc = f"Exposed secret detected ({category}): {rule_id}"
+                findings.append(
+                    Finding(
+                        id=rule_id,
+                        scanner=ScannerType.TRIVY,
+                        title=str(title),
+                        description=desc,
+                        severity=severity,
+                        file_path=target,
+                        line_number=start_line,
+                        remediation="Revoke exposed credential immediately and purge from git history.",
+                        metadata={
+                            "category": category,
+                            "match": s.get("Match"),
+                            "finding_type": "secret",
+                        },
+                    )
+                )
 
     return findings
 
@@ -382,10 +480,29 @@ def normalize_dependency_review_json(data: Any) -> List[Finding]:
                 f"Dependency Review: item[{idx}] must be a mapping. Got: {type(item).__name__}"
             )
         ctx = f"Dependency Review item[{idx}]"
+        # Filter dependency changes to introduction risks ("added")
+        change_type = item.get("change_type")
+        if change_type is not None:
+            if not isinstance(change_type, str):
+                raise NormalizationError(
+                    f"{ctx}: 'change_type' must be a string, got: {type(change_type).__name__}"
+                )
+            change_type_clean = change_type.strip().lower()
+            if change_type_clean == "removed":
+                # Deletion of a dependency eliminates risk — do not block PR
+                continue
+            if change_type_clean != "added":
+                raise NormalizationError(
+                    f"{ctx}: unrecognized 'change_type' '{change_type}'. Expected 'added' or 'removed'."
+                )
 
         # Support GitHub Action dependency-changes format with nested vulnerabilities
-        vulns = item.get("vulnerabilities")
-        if vulns is not None and isinstance(vulns, list):
+        if "vulnerabilities" in item or change_type is not None:
+            vulns = item.get("vulnerabilities")
+            if vulns is not None and not isinstance(vulns, list):
+                raise NormalizationError(
+                    f"{ctx}: 'vulnerabilities' must be a list. Got: {type(vulns).__name__}"
+                )
             pkg_name = _safe_str(item.get("name") or item.get("package_name"), "name", ctx)
             installed_ver = item.get("version") or None
             lic = item.get("license") or None

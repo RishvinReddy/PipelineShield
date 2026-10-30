@@ -22,7 +22,7 @@ scanners:
     fail_on_cve_severity: ["CRITICAL", "HIGH"]
     scan_types:
       - "vuln"
-      - "config"
+      - "misconfig"
       - "secret"
     ignore_unfixed: false
 
@@ -55,4 +55,5 @@ exemptions:
   findings: []
   paths:
     - "tests/**"
+    - "engine/tests/**"
     - "examples/**"

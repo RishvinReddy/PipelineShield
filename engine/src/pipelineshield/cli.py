@@ -16,9 +16,10 @@ Security requirements:
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 from pipelineshield.config import load_policy
 from pipelineshield.models import GateDecision
@@ -35,8 +36,8 @@ _EXIT_BLOCK = 1
 _EXIT_ERROR = 2
 
 
-def parse_args(args: Optional[list] = None) -> argparse.Namespace:
-    """Parse and return CLI arguments."""
+def create_parser() -> argparse.ArgumentParser:
+    """Create command-line argument parser."""
     parser = argparse.ArgumentParser(
         prog="pipelineshield",
         description=(
@@ -101,6 +102,19 @@ def parse_args(args: Optional[list] = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--event-name",
+        default=None,
+        metavar="EVENT_NAME",
+        help="CI event name (e.g. 'pull_request', 'push', 'workflow_dispatch').",
+    )
+    parser.add_argument(
+        "--scanner-status",
+        nargs="*",
+        default=None,
+        metavar="SCANNER=STATUS",
+        help="Explicit scanner status overrides (e.g. trivy=COMPLETED dependency_review=NOT_APPLICABLE).",
+    )
+    parser.add_argument(
         "--output", "-o",
         default="reports/security-summary.json",
         metavar="OUTPUT_JSON",
@@ -112,15 +126,13 @@ def parse_args(args: Optional[list] = None) -> argparse.Namespace:
         default=None,
         help="Optional path to write GitHub Step Summary markdown.",
     )
+    return parser
 
-    parsed = parser.parse_args(args)
-    if not (parsed.findings or parsed.trivy or parsed.semgrep or parsed.dependency_review):
-        parser.error(
-            "At least one findings file is required. "
-            "Specify --findings (with optional --scanner), or one or more of "
-            "--trivy, --semgrep, --dependency-review."
-        )
-    return parsed
+
+def parse_args(args: Optional[list] = None) -> argparse.Namespace:
+    """Parse and return CLI arguments."""
+    parser = create_parser()
+    return parser.parse_args(args)
 
 
 def _load_json_file(path: Path) -> Any:
@@ -181,7 +193,8 @@ def main(args: Optional[list] = None) -> int:
     Returns:
         Exit code: 0 (PASS/WARN), 1 (BLOCK), 2 (ERROR).
     """
-    parsed = parse_args(args)
+    parser = create_parser()
+    parsed = parser.parse_args(args)
 
     # --- Load policy ---
     try:
@@ -195,6 +208,32 @@ def main(args: Optional[list] = None) -> int:
     except Exception as e:
         print(f"[ERROR] Unexpected error loading policy: {e}", file=sys.stderr)
         return _EXIT_ERROR
+
+    # --- Check scanner input requirements ---
+    all_scanners_disabled = (
+        not policy.scanners.trivy.enabled
+        and not policy.scanners.semgrep.enabled
+        and not policy.scanners.dependency_review.enabled
+    )
+
+    has_input = bool(
+        parsed.findings
+        or parsed.trivy
+        or parsed.semgrep
+        or parsed.dependency_review
+    )
+
+    if not has_input:
+        if not all_scanners_disabled:
+            parser.error(
+                "At least one findings file is required when security scanners are enabled in policy. "
+                "Specify --findings (with optional --scanner), or one or more of "
+                "--trivy, --semgrep, --dependency-review."
+            )
+        print(
+            "[WARN] All security scanners are disabled by policy configuration. "
+            "No security scanning was performed."
+        )
 
     # --- Load findings ---
     normalized = []
@@ -222,9 +261,58 @@ def main(args: Optional[list] = None) -> int:
         print(f"[ERROR] Unexpected error processing findings: {e}", file=sys.stderr)
         return _EXIT_ERROR
 
+    # --- Resolve scanner execution statuses ---
+    explicit_status: Dict[str, str] = {}
+    if parsed.scanner_status:
+        for item in parsed.scanner_status:
+            if "=" in item:
+                k, v = item.split("=", 1)
+                explicit_status[k.strip().lower()] = v.strip().upper()
+
+    resolved_status: Dict[str, str] = {}
+    for sc in ("trivy", "semgrep", "dependency_review"):
+        if sc in explicit_status:
+            resolved_status[sc] = explicit_status[sc]
+            continue
+
+        sc_cfg = getattr(policy.scanners, sc)
+        if not sc_cfg.enabled:
+            resolved_status[sc] = "DISABLED"
+        elif sc == "trivy":
+            if parsed.trivy or (parsed.findings and parsed.scanner == "trivy"):
+                resolved_status[sc] = "COMPLETED"
+            elif parsed.findings and parsed.scanner == "pipelineshield":
+                resolved_status[sc] = "COMPLETED"
+            elif parsed.event_name:
+                resolved_status[sc] = "FAILED"
+            else:
+                resolved_status[sc] = "NOT_APPLICABLE"
+        elif sc == "semgrep":
+            if parsed.semgrep or (parsed.findings and parsed.scanner == "semgrep"):
+                resolved_status[sc] = "COMPLETED"
+            elif parsed.findings and parsed.scanner == "pipelineshield":
+                resolved_status[sc] = "COMPLETED"
+            elif parsed.event_name:
+                resolved_status[sc] = "FAILED"
+            else:
+                resolved_status[sc] = "NOT_APPLICABLE"
+        elif sc == "dependency_review":
+            if parsed.dependency_review or (parsed.findings and parsed.scanner == "dependency_review"):
+                resolved_status[sc] = "COMPLETED"
+            elif parsed.findings and parsed.scanner == "pipelineshield":
+                resolved_status[sc] = "COMPLETED"
+            else:
+                # If event is non-PR, dependency review is not applicable
+                if parsed.event_name and parsed.event_name != "pull_request":
+                    resolved_status[sc] = "NOT_APPLICABLE"
+                elif parsed.event_name:
+                    resolved_status[sc] = "FAILED"
+                else:
+                    resolved_status[sc] = "NOT_APPLICABLE"
+
     # --- Evaluate ---
     engine = PolicyEngine(policy)
-    result = engine.evaluate_with_error_guard(normalized)
+    result = engine.evaluate_with_error_guard(normalized, scanner_status=resolved_status)
 
     # --- Write JSON report ---
     try:
@@ -262,7 +350,13 @@ def main(args: Optional[list] = None) -> int:
         return _EXIT_BLOCK
 
     if result.decision == GateDecision.ERROR:
-        print("[GATE] ERROR — engine could not complete evaluation.", file=sys.stderr)
+        if any("no security scanning was performed" in r.lower() for r in result.reasons):
+            print(
+                "[GATE] ERROR — security assessment not performed (all scanners disabled or unexecuted).",
+                file=sys.stderr,
+            )
+        else:
+            print("[GATE] ERROR — engine could not complete evaluation.", file=sys.stderr)
         for err in result.errors:
             print(f"[ENGINE ERROR] {err}", file=sys.stderr)
         return _EXIT_ERROR

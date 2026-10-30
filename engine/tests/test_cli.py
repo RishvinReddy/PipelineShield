@@ -425,3 +425,154 @@ class TestMultiScannerCLI:
         ])
         assert code == 1
 
+    def test_trivy_blocking_misconfiguration_exits_1(self, tmp_path):
+        policy_path = write_policy(tmp_path, 'version: "1.0"')
+        code = main([
+            "--policy", str(policy_path),
+            "--trivy", str(FIXTURES / "trivy_blocking_misconfig.json"),
+            "--output", str(tmp_path / "out.json"),
+        ])
+        assert code == 1
+
+    def test_trivy_clean_misconfiguration_exits_0(self, tmp_path):
+        policy_path = write_policy(tmp_path, 'version: "1.0"')
+        code = main([
+            "--policy", str(policy_path),
+            "--trivy", str(FIXTURES / "trivy_clean_misconfig.json"),
+            "--output", str(tmp_path / "out.json"),
+        ])
+        assert code == 0
+
+    def test_trivy_exposed_secret_exits_1(self, tmp_path):
+        policy_path = write_policy(tmp_path, 'version: "1.0"')
+        code = main([
+            "--policy", str(policy_path),
+            "--trivy", str(FIXTURES / "trivy_exposed_secret.json"),
+            "--output", str(tmp_path / "out.json"),
+        ])
+        assert code == 1
+
+    def test_trivy_clean_secrets_exits_0(self, tmp_path):
+        policy_path = write_policy(tmp_path, 'version: "1.0"')
+        code = main([
+            "--policy", str(policy_path),
+            "--trivy", str(FIXTURES / "trivy_clean_secrets.json"),
+            "--output", str(tmp_path / "out.json"),
+        ])
+        assert code == 0
+
+    def test_trivy_mixed_scan_blocks(self, tmp_path):
+        policy_path = write_policy(tmp_path, 'version: "1.0"')
+        code = main([
+            "--policy", str(policy_path),
+            "--trivy", str(FIXTURES / "trivy_mixed_results.json"),
+            "--output", str(tmp_path / "out.json"),
+        ])
+        assert code == 1
+
+    def test_cli_all_scanners_disabled_mode_exits_error(self, tmp_path):
+        """When all scanners are disabled in policy, CLI generates valid report but exits 2 with ERROR (fail closed)."""
+        policy_yaml = """
+        version: "1.0"
+        scanners:
+          trivy:
+            enabled: false
+          semgrep:
+            enabled: false
+          dependency_review:
+            enabled: false
+        """
+        policy_path = write_policy(tmp_path, policy_yaml)
+        out_path = tmp_path / "out.json"
+        code = main([
+            "--policy", str(policy_path),
+            "--output", str(out_path),
+        ])
+        assert code == 2  # Fail closed: no security scanning was performed
+        data = json.loads(out_path.read_text())
+        assert data["decision"] == "ERROR"
+        assert data["scanner_status"] == {
+            "trivy": "DISABLED",
+            "semgrep": "DISABLED",
+            "dependency_review": "DISABLED",
+        }
+        assert any("all security scanners are disabled" in r.lower() for r in data["reasons"])
+
+    def test_cli_scanner_disabled_intentionally_with_other_scanner_clean_exits_0(self, tmp_path):
+        """When 1 scanner is disabled in policy, but another completed clean, CLI exits 0 with PASS."""
+        policy_yaml = """
+        version: "1.0"
+        scanners:
+          trivy:
+            enabled: false
+          semgrep:
+            enabled: true
+          dependency_review:
+            enabled: false
+        """
+        policy_path = write_policy(tmp_path, policy_yaml)
+        out_path = tmp_path / "out.json"
+        code = main([
+            "--policy", str(policy_path),
+            "--semgrep", str(FIXTURES / "semgrep_clean.json"),
+            "--output", str(out_path),
+        ])
+        assert code == 0
+        data = json.loads(out_path.read_text())
+        assert data["decision"] == "PASS"
+        assert data["scanner_status"]["trivy"] == "DISABLED"
+        assert data["scanner_status"]["semgrep"] == "COMPLETED"
+        assert data["scanner_status"]["dependency_review"] == "DISABLED"
+
+    def test_cli_push_event_marks_dependency_review_not_applicable(self, tmp_path):
+        """On a push event, omitted Dependency Review report records NOT_APPLICABLE."""
+        policy_path = write_policy(tmp_path, 'version: "1.0"')
+        out_path = tmp_path / "out.json"
+        code = main([
+            "--policy", str(policy_path),
+            "--trivy", str(FIXTURES / "trivy_clean.json"),
+            "--semgrep", str(FIXTURES / "semgrep_clean.json"),
+            "--event-name", "push",
+            "--output", str(out_path),
+        ])
+        assert code == 0
+        data = json.loads(out_path.read_text())
+        assert data["scanner_status"]["dependency_review"] == "NOT_APPLICABLE"
+        assert data["scanner_status"]["trivy"] == "COMPLETED"
+        assert data["scanner_status"]["semgrep"] == "COMPLETED"
+
+    def test_cli_pr_event_missing_dependency_review_fails_closed(self, tmp_path):
+        """On a PR event, if an enabled scanner output is missing, it is marked FAILED and fails closed."""
+        policy_path = write_policy(tmp_path, 'version: "1.0"')
+        out_path = tmp_path / "out.json"
+        code = main([
+            "--policy", str(policy_path),
+            "--trivy", str(FIXTURES / "trivy_clean.json"),
+            "--semgrep", str(FIXTURES / "semgrep_clean.json"),
+            "--event-name", "pull_request",
+            "--output", str(out_path),
+        ])
+        assert code == 2  # ERROR decision due to missing required scanner
+        data = json.loads(out_path.read_text())
+        assert data["decision"] == "ERROR"
+        assert data["scanner_status"]["dependency_review"] == "FAILED"
+
+    def test_cli_explicit_scanner_status_override(self, tmp_path):
+        """Explicit --scanner-status flag overrides resolved scanner statuses."""
+        policy_path = write_policy(tmp_path, 'version: "1.0"')
+        out_path = tmp_path / "out.json"
+        code = main([
+            "--policy", str(policy_path),
+            "--findings", str(FIXTURES / "clean_findings.json"),
+            "--scanner-status", "trivy=COMPLETED", "semgrep=DISABLED", "dependency_review=NOT_APPLICABLE",
+            "--output", str(out_path),
+        ])
+        assert code == 0
+        data = json.loads(out_path.read_text())
+        assert data["scanner_status"] == {
+            "trivy": "COMPLETED",
+            "semgrep": "DISABLED",
+            "dependency_review": "NOT_APPLICABLE",
+        }
+
+

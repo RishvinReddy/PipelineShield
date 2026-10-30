@@ -18,6 +18,7 @@ import {
   ChevronRight,
   RefreshCw,
 } from "lucide-react";
+import { validateReportSchema } from "@/lib/report-validator";
 
 interface Finding {
   id: string;
@@ -50,12 +51,19 @@ interface EvaluationResult {
   decision: "PASS" | "WARN" | "BLOCK" | "ERROR";
   reasons: string[];
   summary: EvaluationSummary;
+  findings?: Finding[];
   blocking_findings: Finding[];
   warning_findings: Finding[];
-  advisory_findings: Finding[];
+  advisory_findings?: Finding[];
   exempted_findings: Finding[];
   evaluated_at?: string;
   policy_metadata?: Record<string, string>;
+  scanner_status?: Record<string, string>;
+  errors?: string[];
+}
+
+interface ProcessedFinding extends Finding {
+  gateCategory: "blocking" | "warning" | "advisory" | "exempted";
 }
 
 // Sample reports for demonstration
@@ -149,6 +157,11 @@ const SAMPLE_REPORTS: Record<string, { label: string; tag: string; isDemo: boole
       ],
       exempted_findings: [],
       evaluated_at: "2026-10-30T18:00:00Z",
+      scanner_status: {
+        trivy: "COMPLETED",
+        semgrep: "COMPLETED",
+        dependency_review: "COMPLETED",
+      },
       policy_metadata: {
         name: "PipelineShield Default Security Policy",
         mode: "strict",
@@ -205,6 +218,11 @@ const SAMPLE_REPORTS: Record<string, { label: string; tag: string; isDemo: boole
       ],
       exempted_findings: [],
       evaluated_at: "2026-10-30T17:45:00Z",
+      scanner_status: {
+        trivy: "COMPLETED",
+        semgrep: "COMPLETED",
+        dependency_review: "NOT_APPLICABLE",
+      },
       policy_metadata: {
         name: "PipelineShield Default Security Policy",
         mode: "strict",
@@ -234,6 +252,11 @@ const SAMPLE_REPORTS: Record<string, { label: string; tag: string; isDemo: boole
       advisory_findings: [],
       exempted_findings: [],
       evaluated_at: "2026-10-30T17:30:00Z",
+      scanner_status: {
+        trivy: "COMPLETED",
+        semgrep: "COMPLETED",
+        dependency_review: "COMPLETED",
+      },
       policy_metadata: {
         name: "PipelineShield Default Security Policy",
         mode: "strict",
@@ -241,37 +264,6 @@ const SAMPLE_REPORTS: Record<string, { label: string; tag: string; isDemo: boole
     },
   },
 };
-
-function validateReportSchema(obj: unknown): { valid: boolean; error?: string } {
-  if (!obj || typeof obj !== "object" || Array.isArray(obj)) {
-    return { valid: false, error: "Root must be a valid JSON object." };
-  }
-  const rec = obj as Record<string, unknown>;
-  const validDecisions = ["PASS", "WARN", "BLOCK", "ERROR"];
-  if (typeof rec.decision !== "string" || !validDecisions.includes(rec.decision.toUpperCase())) {
-    return {
-      valid: false,
-      error: `Invalid 'decision' field. Must be one of: ${validDecisions.join(", ")}.`,
-    };
-  }
-  if (!rec.summary || typeof rec.summary !== "object" || Array.isArray(rec.summary)) {
-    return { valid: false, error: "Missing or invalid 'summary' object." };
-  }
-  const summary = rec.summary as Record<string, unknown>;
-  const numericFields = ["total_findings", "critical", "high", "medium", "low", "blocking_count", "warning_count"];
-  for (const field of numericFields) {
-    if (typeof summary[field] !== "number") {
-      return { valid: false, error: `Summary field '${field}' must be a number.` };
-    }
-  }
-  if (rec.blocking_findings && !Array.isArray(rec.blocking_findings)) {
-    return { valid: false, error: "'blocking_findings' must be an array." };
-  }
-  if (rec.warning_findings && !Array.isArray(rec.warning_findings)) {
-    return { valid: false, error: "'warning_findings' must be an array." };
-  }
-  return { valid: true };
-}
 
 export default function Home() {
   const [activeReportKey, setActiveReportKey] = useState<string>("vulnerable");
@@ -294,9 +286,29 @@ export default function Home() {
 
   const isDemoActive = activeReportKey !== "custom";
 
-  // Combine all findings for interactive search and filter
-  const allFindings = useMemo(() => {
-    const list: (Finding & { gateCategory: "blocking" | "warning" | "advisory" | "exempted" })[] = [];
+  // Combine all findings for interactive search and filter:
+  // Uses 'findings' as the authoritative superset to guarantee PASS findings are displayed
+  const allFindings = useMemo<ProcessedFinding[]>(() => {
+    if (Array.isArray(currentResult.findings) && currentResult.findings.length > 0) {
+      const blockingIds = new Set((currentResult.blocking_findings || []).map((f) => f.id));
+      const warningIds = new Set((currentResult.warning_findings || []).map((f) => f.id));
+      const exemptedIds = new Set((currentResult.exempted_findings || []).map((f) => f.id));
+
+      return currentResult.findings.map((f: Finding) => {
+        let gateCategory: "blocking" | "warning" | "advisory" | "exempted" = "advisory";
+        if (blockingIds.has(f.id)) {
+          gateCategory = "blocking";
+        } else if (warningIds.has(f.id)) {
+          gateCategory = "warning";
+        } else if (exemptedIds.has(f.id)) {
+          gateCategory = "exempted";
+        }
+        return { ...f, gateCategory };
+      });
+    }
+
+    // Fallback if 'findings' is not populated (e.g. older format)
+    const list: ProcessedFinding[] = [];
     (currentResult.blocking_findings || []).forEach((f) => list.push({ ...f, gateCategory: "blocking" }));
     (currentResult.warning_findings || []).forEach((f) => list.push({ ...f, gateCategory: "warning" }));
     (currentResult.advisory_findings || []).forEach((f) => list.push({ ...f, gateCategory: "advisory" }));
@@ -340,11 +352,13 @@ export default function Home() {
           decision: (parsed.decision || "BLOCK").toUpperCase(),
           reasons: Array.isArray(parsed.reasons) ? parsed.reasons : [],
           summary: parsed.summary,
+          findings: Array.isArray(parsed.findings) ? parsed.findings : undefined,
           blocking_findings: Array.isArray(parsed.blocking_findings) ? parsed.blocking_findings : [],
           warning_findings: Array.isArray(parsed.warning_findings) ? parsed.warning_findings : [],
           advisory_findings: Array.isArray(parsed.advisory_findings) ? parsed.advisory_findings : [],
           exempted_findings: Array.isArray(parsed.exempted_findings) ? parsed.exempted_findings : [],
           evaluated_at: parsed.evaluated_at || new Date().toISOString(),
+          scanner_status: parsed.scanner_status || {},
           policy_metadata: parsed.policy_metadata || {},
         };
 
@@ -358,7 +372,7 @@ export default function Home() {
     reader.readAsText(file);
   };
 
-  const getDecisionBadge = (decision: string) => {
+  const getDecisionBadge = (decision: string, reasons: string[] = []) => {
     switch (decision) {
       case "BLOCK":
         return {
@@ -387,19 +401,25 @@ export default function Home() {
           glow: "shadow-emerald-500/20",
           cardBg: "from-emerald-950/40 via-slate-900/60 to-slate-950 border-emerald-500/30",
         };
-      default:
+      default: {
+        const isNoScan = reasons.some((r) =>
+          r.toLowerCase().includes("no security scanning was performed")
+        );
         return {
           icon: AlertOctagon,
-          text: "ENGINE ERROR (Exit 2)",
-          sub: "Execution fault or configuration error encountered",
+          text: isNoScan ? "ASSESSMENT NOT PERFORMED (Exit 2)" : "ENGINE ERROR (Exit 2)",
+          sub: isNoScan
+            ? "PR gatekeeper failed: zero security scanners executed or all scanners disabled"
+            : "Execution fault or configuration error encountered",
           bg: "bg-red-500/10 border-red-500/30 text-red-400",
           glow: "shadow-red-500/20",
           cardBg: "from-red-950/40 via-slate-900/60 to-slate-950 border-red-500/30",
         };
+      }
     }
   };
 
-  const decisionMeta = getDecisionBadge(currentResult.decision);
+  const decisionMeta = getDecisionBadge(currentResult.decision, currentResult.reasons);
   const DecisionIcon = decisionMeta.icon;
 
   const getSeverityBadge = (severity: string) => {
@@ -623,6 +643,38 @@ export default function Home() {
             </div>
           </div>
         </section>
+
+        {/* Scanner Execution Coverage */}
+        {currentResult.scanner_status && Object.keys(currentResult.scanner_status).length > 0 && (
+          <section className="p-4 rounded-xl border border-slate-800/80 bg-slate-900/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <span className="text-xs uppercase font-semibold text-slate-400 tracking-wider">
+              Scanner Execution Coverage
+            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              {Object.entries(currentResult.scanner_status).map(([scanner, status]) => {
+                let badgeClass = "bg-slate-800 text-slate-300 border-slate-700";
+                if (status === "COMPLETED") {
+                  badgeClass = "bg-emerald-950/50 text-emerald-300 border-emerald-500/40";
+                } else if (status === "DISABLED") {
+                  badgeClass = "bg-slate-900 text-slate-400 border-slate-800";
+                } else if (status === "NOT_APPLICABLE") {
+                  badgeClass = "bg-blue-950/50 text-blue-300 border-blue-500/40";
+                } else if (status === "FAILED") {
+                  badgeClass = "bg-rose-950/50 text-rose-300 border-rose-500/40";
+                }
+                return (
+                  <div
+                    key={scanner}
+                    className={`inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-md text-xs font-mono border ${badgeClass}`}
+                  >
+                    <span className="font-semibold">{scanner}:</span>
+                    <span>{status}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
 
         {/* Severity Distribution Bar */}
         <section className="p-6 rounded-xl border border-slate-800/80 bg-slate-900/40 space-y-4">
@@ -881,7 +933,7 @@ export default function Home() {
                                   CWE Identifiers
                                 </span>
                                 <div className="mt-1 flex flex-wrap gap-1.5">
-                                  {finding.cwe_ids.map((cwe) => (
+                                  {finding.cwe_ids.map((cwe: string) => (
                                     <span
                                       key={cwe}
                                       className="px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300 font-mono text-[11px]"

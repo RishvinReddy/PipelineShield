@@ -1,0 +1,21 @@
+[
+  {
+    "change_type": "removed",
+    "manifest": "package.json",
+    "ecosystem": "npm",
+    "name": "lodash",
+    "version": "4.17.15",
+    "package_url": "pkg:npm/lodash@4.17.15",
+    "license": "MIT",
+    "source_repository_url": "https://github.com/lodash/lodash",
+    "vulnerabilities": [
+      {
+        "severity": "critical",
+        "advisory_ghsa_id": "GHSA-35jh-r3h4-6jhm",
+        "advisory_summary": "Prototype Pollution in lodash",
+        "advisory_url": "https://github.com/advisories/GHSA-35jh-r3h4-6jhm",
+        "safe_version": "4.17.21"
+      }
+    ]
+  }
+]

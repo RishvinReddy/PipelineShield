@@ -61,6 +61,20 @@ class GateDecision(str, Enum):
     ERROR = "ERROR"
 
 
+class ScannerStatus(str, Enum):
+    """Scanner execution status.
+
+    - COMPLETED: Scanner executed successfully and produced output.
+    - DISABLED: Scanner was disabled by policy configuration.
+    - NOT_APPLICABLE: Scanner was not applicable to the CI event (e.g. Dependency Review on non-PR event).
+    - FAILED: Scanner execution failed or required output was missing.
+    """
+    COMPLETED = "COMPLETED"
+    DISABLED = "DISABLED"
+    NOT_APPLICABLE = "NOT_APPLICABLE"
+    FAILED = "FAILED"
+
+
 class Finding(BaseModel):
     """Normalized security finding representation.
 
@@ -131,11 +145,9 @@ class ScannerConfig(BaseModel):
 
 class TrivyScannerConfig(ScannerConfig):
     """Typed configuration options for Trivy vulnerability scanner."""
-    fail_on_cve_severity: List[Severity] = Field(
-        default_factory=lambda: [Severity.CRITICAL, Severity.HIGH]
-    )
+    fail_on_cve_severity: Optional[List[Severity]] = None
     scan_types: List[str] = Field(
-        default_factory=lambda: ["vuln", "config", "secret"]
+        default_factory=lambda: ["vuln", "misconfig", "secret"]
     )
     ignore_unfixed: bool = False
 
@@ -143,7 +155,7 @@ class TrivyScannerConfig(ScannerConfig):
     @classmethod
     def validate_trivy_severities(cls, v: Any) -> Any:
         if v is None:
-            return []
+            return None
         if isinstance(v, list):
             res = []
             for item in v:
@@ -160,7 +172,7 @@ class TrivyScannerConfig(ScannerConfig):
     @field_validator("scan_types")
     @classmethod
     def validate_scan_types(cls, v: List[str]) -> List[str]:
-        valid_types = {"vuln", "config", "secret", "license"}
+        valid_types = {"vuln", "misconfig", "secret", "license"}
         for item in v:
             if item not in valid_types:
                 raise ValueError(
@@ -174,15 +186,13 @@ class SemgrepScannerConfig(ScannerConfig):
     rulesets: List[str] = Field(
         default_factory=lambda: ["p/security-audit", "p/secrets", "p/owasp-top-ten"]
     )
-    fail_on_severity: List[Severity] = Field(
-        default_factory=lambda: [Severity.CRITICAL, Severity.HIGH]
-    )
+    fail_on_severity: Optional[List[Severity]] = None
 
     @field_validator("fail_on_severity", mode="before")
     @classmethod
     def validate_semgrep_severities(cls, v: Any) -> Any:
         if v is None:
-            return []
+            return None
         mapping = {
             "ERROR": Severity.HIGH,
             "WARNING": Severity.MEDIUM,
@@ -211,9 +221,7 @@ class DependencyReviewScannerConfig(ScannerConfig):
     """Typed configuration options for GitHub Dependency Review scanner."""
     allow_licenses: List[str] = Field(default_factory=list)
     deny_licenses: List[str] = Field(default_factory=list)
-    deny_severities: List[Severity] = Field(
-        default_factory=lambda: [Severity.CRITICAL, Severity.HIGH]
-    )
+    deny_severities: Optional[List[Severity]] = None
     fail_on_severity: Optional[List[Severity]] = None
 
     @field_validator("deny_severities", "fail_on_severity", mode="before")
@@ -360,3 +368,8 @@ class EvaluationResult(BaseModel):
     exempted_findings: List[Finding] = Field(default_factory=list)
     reasons: List[str] = Field(default_factory=list)
     errors: List[str] = Field(default_factory=list, description="Engine errors that caused ERROR decisions")
+    scanner_status: Dict[str, str] = Field(
+        default_factory=dict,
+        description="Execution status per scanner ('COMPLETED', 'DISABLED', 'NOT_APPLICABLE', 'FAILED')",
+    )
+

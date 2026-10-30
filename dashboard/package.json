@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:contract": "node --experimental-strip-types ../scripts/test_dashboard_contract.mjs"
   },
   "dependencies": {
     "lucide-react": "^1.65.0",
