@@ -56,5 +56,4 @@ exemptions:
   paths:
     - "tests/**"
     - "engine/tests/**"
-    - "scripts/**"
     - "examples/**"

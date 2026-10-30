@@ -50,7 +50,7 @@ function runCli(args, expectExit = 0) {
   const policyPath = path.join(ROOT_DIR, "config", "policy.yaml");
   const cmd = `"${PYTHON}" -m pipelineshield.cli --policy "${policyPath}" ${args}`;
   try {
-    // nosemgrep: javascript.lang.security.detect-child-process.detect-child-process
+    // nosemgrep: javascript.lang.security.detect-child-process.detect-child-process - Intentional test-harness subprocess invocation of PipelineShield CLI with static test fixture paths
     const stdout = execSync(cmd, { cwd: ROOT_DIR, stdio: "pipe" });
     if (expectExit !== 0) {
       throw new Error(`Expected exit ${expectExit}, but command succeeded (exit 0). Output: ${stdout}`);
@@ -135,7 +135,7 @@ async function main() {
   );
   const disabledOut = path.join(REPORTS_DIR, "contract_disabled.json");
   const disabledCmd = `"${PYTHON}" -m pipelineshield.cli --policy "${disabledPolicyPath}" --semgrep "${path.join(FIXTURES_DIR, "semgrep_clean.json")}" --output "${disabledOut}"`;
-  // nosemgrep: javascript.lang.security.detect-child-process.detect-child-process
+  // nosemgrep: javascript.lang.security.detect-child-process.detect-child-process - Intentional test-harness subprocess invocation of PipelineShield CLI with static test fixture paths
   execSync(disabledCmd, { cwd: ROOT_DIR, stdio: "pipe" });
   const disabledData = JSON.parse(fs.readFileSync(disabledOut, "utf-8"));
   assertValid(disabledData, "Disabled scanner report");
@@ -153,7 +153,7 @@ async function main() {
   const allDisabledOut = path.join(REPORTS_DIR, "contract_all_disabled.json");
   const allDisabledCmd = `"${PYTHON}" -m pipelineshield.cli --policy "${allDisabledPolicyPath}" --output "${allDisabledOut}"`;
   try {
-    // nosemgrep: javascript.lang.security.detect-child-process.detect-child-process
+    // nosemgrep: javascript.lang.security.detect-child-process.detect-child-process - Intentional test-harness subprocess invocation of PipelineShield CLI with static test fixture paths
     execSync(allDisabledCmd, { cwd: ROOT_DIR, stdio: "pipe" });
     throw new Error("Expected all-scanners-disabled CLI invocation to exit with code 2 (ERROR), but it exited 0");
   } catch (err) {
