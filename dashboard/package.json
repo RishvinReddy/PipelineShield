@@ -2,11 +2,14 @@
   "name": "dashboard",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "npm run test:ingestion && npm run test:contract",
+    "test:ingestion": "node --experimental-strip-types ../scripts/test_live_ingestion.mjs",
     "test:contract": "node --experimental-strip-types ../scripts/test_dashboard_contract.mjs"
   },
   "dependencies": {

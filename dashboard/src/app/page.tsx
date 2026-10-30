@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo, ChangeEvent } from "react";
+import React, { useState, useMemo, ChangeEvent, useEffect, useCallback } from "react";
 import {
   Shield,
   ShieldAlert,
@@ -27,6 +27,7 @@ import {
   Info,
 } from "lucide-react";
 import { validateReportSchema } from "@/lib/report-validator";
+import { LiveReportPanel, LiveReportResponse } from "@/components/LiveReportPanel";
 
 interface Finding {
   id: string;
@@ -311,26 +312,140 @@ const SAMPLE_REPORTS: Record<
   },
 };
 
+function normalizeReport(parsed: Record<string, unknown>): EvaluationResult {
+  return {
+    decision: (typeof parsed.decision === "string" ? parsed.decision : "BLOCK").toUpperCase() as
+      | "PASS"
+      | "WARN"
+      | "BLOCK"
+      | "ERROR",
+    reasons: Array.isArray(parsed.reasons) ? (parsed.reasons as string[]) : [],
+    summary: (parsed.summary as EvaluationSummary) || {
+      total_findings: 0,
+      critical: 0,
+      high: 0,
+      medium: 0,
+      low: 0,
+      info: 0,
+      exempted: 0,
+      blocking_count: 0,
+      warning_count: 0,
+    },
+    findings: Array.isArray(parsed.findings) ? (parsed.findings as Finding[]) : undefined,
+    blocking_findings: Array.isArray(parsed.blocking_findings)
+      ? (parsed.blocking_findings as Finding[])
+      : [],
+    warning_findings: Array.isArray(parsed.warning_findings)
+      ? (parsed.warning_findings as Finding[])
+      : [],
+    advisory_findings: Array.isArray(parsed.advisory_findings)
+      ? (parsed.advisory_findings as Finding[])
+      : [],
+    exempted_findings: Array.isArray(parsed.exempted_findings)
+      ? (parsed.exempted_findings as Finding[])
+      : [],
+    evaluated_at: typeof parsed.evaluated_at === "string" ? parsed.evaluated_at : undefined,
+    scanner_status: (parsed.scanner_status as Record<string, string>) || {},
+    policy_metadata: (parsed.policy_metadata as Record<string, string>) || {},
+  };
+}
+
 export default function Home() {
+  const [activeReportSource, setActiveReportSource] = useState<"live" | "demo" | "custom">("demo");
   const [activeReportKey, setActiveReportKey] = useState<string>("vulnerable");
   const [customReport, setCustomReport] = useState<EvaluationResult | null>(null);
   const [customFileName, setCustomFileName] = useState<string>("");
   const [uploadError, setUploadError] = useState<string | null>(null);
+
+  // Live GitHub Actions Ingestion State
+  const [liveData, setLiveData] = useState<LiveReportResponse | null>(null);
+  const [liveLoading, setLiveLoading] = useState<boolean>(true);
+  const [liveError, setLiveError] = useState<string | null>(null);
+  const [liveReport, setLiveReport] = useState<EvaluationResult | null>(null);
+
   const [activeTab, setActiveTab] = useState<"findings" | "policy" | "architecture">("findings");
   const [severityFilter, setSeverityFilter] = useState<string>("ALL");
   const [scannerFilter, setScannerFilter] = useState<string>("ALL");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [expandedFindingId, setExpandedFindingId] = useState<string | null>(null);
 
+  const loadReport = useCallback(async () => {
+    try {
+      const res = await fetch("/api/latest-report", { cache: "no-store" });
+      const data: LiveReportResponse = await res.json();
+      setLiveData(data);
+      if (!res.ok || !data.success) {
+        setLiveError(data.error || `Failed to fetch live report (HTTP ${res.status})`);
+      } else if (data.report) {
+        const validated = normalizeReport(data.report as Record<string, unknown>);
+        setLiveReport(validated);
+        setActiveReportSource("live");
+      }
+    } catch (err) {
+      setLiveError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLiveLoading(false);
+    }
+  }, []);
+
+  const handleRefresh = useCallback(() => {
+    setLiveLoading(true);
+    setLiveError(null);
+    void loadReport();
+  }, [loadReport]);
+
+  useEffect(() => {
+    let ignore = false;
+    fetch("/api/latest-report", { cache: "no-store" })
+      .then((res) =>
+        res.json().then((data: LiveReportResponse) => {
+          if (ignore) return;
+          setLiveData(data);
+          if (!res.ok || !data.success) {
+            setLiveError(data.error || `Failed to fetch live report (HTTP ${res.status})`);
+          } else if (data.report) {
+            const validated = normalizeReport(data.report as Record<string, unknown>);
+            setLiveReport(validated);
+            setActiveReportSource("live");
+          }
+        })
+      )
+      .catch((err) => {
+        if (!ignore) {
+          setLiveError(err instanceof Error ? err.message : String(err));
+        }
+      })
+      .finally(() => {
+        if (!ignore) {
+          setLiveLoading(false);
+        }
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
   // Active report data
   const currentResult: EvaluationResult = useMemo(() => {
-    if (activeReportKey === "custom" && customReport) {
+    if (activeReportSource === "live" && liveReport) {
+      return liveReport;
+    }
+    if (activeReportSource === "custom" && customReport) {
       return customReport;
     }
     return SAMPLE_REPORTS[activeReportKey]?.data || SAMPLE_REPORTS.vulnerable.data;
-  }, [activeReportKey, customReport]);
+  }, [activeReportSource, liveReport, activeReportKey, customReport]);
 
-  const isDemoActive = activeReportKey !== "custom";
+  const isDemoActive = activeReportSource === "demo";
+  const isLiveActive = activeReportSource === "live" && liveReport !== null;
+
+  const activeSourceLabel =
+    activeReportSource === "live"
+      ? `Live CI Run #${liveData?.run?.id || ""}`
+      : activeReportSource === "custom"
+      ? `Uploaded: ${customFileName || "JSON"}`
+      : `Demo: ${SAMPLE_REPORTS[activeReportKey]?.label || "Synthetic"}`;
 
   // Combine all findings for interactive search and filter:
   // Uses 'findings' as the authoritative superset to guarantee PASS findings are displayed
@@ -402,29 +517,11 @@ export default function Home() {
           return;
         }
 
-        const normalized: EvaluationResult = {
-          decision: (parsed.decision || "BLOCK").toUpperCase(),
-          reasons: Array.isArray(parsed.reasons) ? parsed.reasons : [],
-          summary: parsed.summary,
-          findings: Array.isArray(parsed.findings) ? parsed.findings : undefined,
-          blocking_findings: Array.isArray(parsed.blocking_findings)
-            ? parsed.blocking_findings
-            : [],
-          warning_findings: Array.isArray(parsed.warning_findings) ? parsed.warning_findings : [],
-          advisory_findings: Array.isArray(parsed.advisory_findings)
-            ? parsed.advisory_findings
-            : [],
-          exempted_findings: Array.isArray(parsed.exempted_findings)
-            ? parsed.exempted_findings
-            : [],
-          evaluated_at: parsed.evaluated_at || undefined,
-          scanner_status: parsed.scanner_status || {},
-          policy_metadata: parsed.policy_metadata || {},
-        };
+        const normalized = normalizeReport(parsed);
 
         setCustomReport(normalized);
         setCustomFileName(file.name);
-        setActiveReportKey("custom");
+        setActiveReportSource("custom");
       } catch (err) {
         setUploadError(
           `Failed to parse JSON file: ${err instanceof Error ? err.message : String(err)}`
@@ -530,19 +627,28 @@ export default function Home() {
   };
 
   // Strict provenance metadata: NEVER hardcode live commit SHAs or branches into uploaded or demo data
-  const repoDisplay = isDemoActive
-    ? "Demonstration (Synthetic)"
-    : currentResult.policy_metadata?.repository || "Not available";
+  const repoDisplay =
+    activeReportSource === "live"
+      ? "RishvinReddy/PipelineShield"
+      : isDemoActive
+      ? "Demonstration (Synthetic)"
+      : currentResult.policy_metadata?.repository || "Not available";
 
-  const branchDisplay = isDemoActive
-    ? "demo/synthetic-run"
-    : currentResult.policy_metadata?.branch || "Not available";
+  const branchDisplay =
+    activeReportSource === "live"
+      ? liveData?.run?.head_branch || currentResult.policy_metadata?.branch || "main"
+      : isDemoActive
+      ? "demo/synthetic-run"
+      : currentResult.policy_metadata?.branch || "Not available";
 
-  const commitDisplay = isDemoActive
-    ? "N/A (Synthetic)"
-    : currentResult.policy_metadata?.commit || "Not available";
+  const commitDisplay =
+    activeReportSource === "live"
+      ? (liveData?.run?.head_sha ? liveData.run.head_sha.slice(0, 7) : currentResult.policy_metadata?.commit?.slice(0, 7)) || "Not available"
+      : isDemoActive
+      ? "N/A (Synthetic)"
+      : currentResult.policy_metadata?.commit || "Not available";
 
-  const evaluatedAtDisplay = currentResult.evaluated_at || "Not available";
+  const evaluatedAtDisplay = currentResult.evaluated_at || liveData?.run?.updated_at || "Not available";
 
   return (
     <div className="min-h-screen flex flex-col bg-[#F4F6F8] text-[#172435] font-sans">
@@ -558,7 +664,7 @@ export default function Home() {
           <div>Evaluated: <strong>{evaluatedAtDisplay}</strong></div>
         </div>
         <div className="text-xs text-[#64748B] italic">
-          Data Provenance: {isDemoActive ? "DEMONSTRATION DATA (MOCK)" : `Uploaded Artifact (${customFileName})`}
+          Data Provenance: {activeReportSource === "live" ? `LIVE GITHUB CI (Run #${liveData?.run?.id || "N/A"})` : isDemoActive ? "DEMONSTRATION DATA (MOCK)" : `Uploaded Artifact (${customFileName})`}
         </div>
       </div>
 
@@ -651,12 +757,27 @@ export default function Home() {
                 Switch Assessment Dataset:
               </span>
               <div className="flex flex-wrap gap-1.5">
+                {liveReport && (
+                  <button
+                    onClick={() => setActiveReportSource("live")}
+                    className={`text-xs px-2.5 py-1 rounded-md border font-medium transition-all cursor-pointer ${
+                      activeReportSource === "live"
+                        ? "bg-[#0284C7] text-white border-[#0284C7] shadow-2xs font-semibold"
+                        : "bg-white text-[#0284C7] border-[#BAE6FD] hover:bg-[#F0F9FF]"
+                    }`}
+                  >
+                    ● Live CI Run {liveData?.run?.id ? `#${liveData.run.id}` : ""}
+                  </button>
+                )}
                 {Object.entries(SAMPLE_REPORTS).map(([key, item]) => (
                   <button
                     key={key}
-                    onClick={() => setActiveReportKey(key)}
+                    onClick={() => {
+                      setActiveReportKey(key);
+                      setActiveReportSource("demo");
+                    }}
                     className={`text-xs px-2.5 py-1 rounded-md border font-medium transition-all cursor-pointer ${
-                      activeReportKey === key
+                      activeReportSource === "demo" && activeReportKey === key
                         ? "bg-[#0F172A] text-white border-[#0F172A] shadow-2xs"
                         : "bg-white text-[#475569] border-[#E2E8F0] hover:bg-[#F8FAFC] hover:text-[#172435]"
                     }`}
@@ -666,9 +787,9 @@ export default function Home() {
                 ))}
                 {customReport && (
                   <button
-                    onClick={() => setActiveReportKey("custom")}
+                    onClick={() => setActiveReportSource("custom")}
                     className={`text-xs px-2.5 py-1 rounded-md border font-medium transition-all cursor-pointer ${
-                      activeReportKey === "custom"
+                      activeReportSource === "custom"
                         ? "bg-[#0F172A] text-white border-[#0F172A]"
                         : "bg-white text-[#475569] border-[#E2E8F0] hover:bg-[#F8FAFC]"
                     }`}
@@ -680,6 +801,22 @@ export default function Home() {
             </div>
           </div>
         </section>
+
+        {/* Live GitHub Actions Report Ingestion Panel */}
+        <LiveReportPanel
+          liveData={liveData}
+          loading={liveLoading}
+          error={liveError}
+          onRefresh={handleRefresh}
+          onLoadLiveReport={(rep) => {
+            if (rep) {
+              setLiveReport(normalizeReport(rep as Record<string, unknown>));
+              setActiveReportSource("live");
+            }
+          }}
+          isLiveActive={isLiveActive}
+          activeSourceLabel={activeSourceLabel}
+        />
 
         {/* Upload Error Banner */}
         {uploadError && (
@@ -699,7 +836,23 @@ export default function Home() {
 
         {/* Data Provenance Notice */}
         <div className="no-print">
-          {isDemoActive ? (
+          {activeReportSource === "live" ? (
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between px-3.5 py-2.5 rounded-lg border border-[#BAE6FD] bg-[#F0F9FF] text-[#0369A1] text-xs gap-2">
+              <div className="flex items-center space-x-2">
+                <span className="font-bold uppercase text-[10px] px-2 py-0.5 rounded bg-[#0284C7] text-white tracking-wider flex-shrink-0">
+                  LIVE GITHUB ACTIONS CI
+                </span>
+                <span className="font-medium">
+                  Viewing live report downloaded from GitHub Actions Run{" "}
+                  <strong>#{liveData?.run?.id}</strong> ({liveData?.run?.name || "security-gate"}) &bull; Commit{" "}
+                  <code className="font-mono">{liveData?.run?.head_sha?.slice(0, 7) || "unknown"}</code>
+                </span>
+              </div>
+              <span className="text-[11px] font-mono text-[#0284C7] flex-shrink-0">
+                Fetched: {liveData?.fetched_at ? new Date(liveData.fetched_at).toLocaleTimeString() : "Just now"}
+              </span>
+            </div>
+          ) : isDemoActive ? (
             <div className="flex flex-col sm:flex-row sm:items-center justify-between px-3.5 py-2.5 rounded-lg border border-[#FED7AA] bg-[#FFF7ED] text-[#9A3412] text-xs gap-2">
               <div className="flex items-center space-x-2">
                 <span className="font-bold uppercase text-[10px] px-2 py-0.5 rounded bg-[#EA580C] text-white tracking-wider flex-shrink-0">
