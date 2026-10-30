@@ -540,3 +540,132 @@ class TestLicensePolicy:
         )
         result = engine.evaluate([finding])
         assert result.decision == GateDecision.PASS
+
+
+class TestScannerSpecificOverrides:
+    def test_trivy_fail_on_cve_severity_overrides_global_block(self):
+        from pipelineshield.models import ScannersConfig, TrivyScannerConfig
+        config = PolicyConfig(
+            scanners=ScannersConfig(
+                trivy=TrivyScannerConfig(
+                    enabled=True,
+                    fail_on_cve_severity=[Severity.CRITICAL]
+                )
+            )
+        )
+        engine = PolicyEngine(config)
+        # HIGH is normally BLOCK under global thresholds, but here Trivy only blocks on CRITICAL
+        high_finding = Finding(
+            id="CVE-2024-HIGH",
+            title="High vuln",
+            severity=Severity.HIGH,
+            scanner=ScannerType.TRIVY,
+        )
+        res_high = engine.evaluate([high_finding])
+        assert res_high.decision == GateDecision.WARN
+        assert len(res_high.blocking_findings) == 0
+        assert len(res_high.warning_findings) == 1
+
+        crit_finding = Finding(
+            id="CVE-2024-CRIT",
+            title="Crit vuln",
+            severity=Severity.CRITICAL,
+            scanner=ScannerType.TRIVY,
+        )
+        res_crit = engine.evaluate([crit_finding])
+        assert res_crit.decision == GateDecision.BLOCK
+        assert len(res_crit.blocking_findings) == 1
+
+    def test_semgrep_fail_on_severity_overrides_global_block(self):
+        from pipelineshield.models import ScannersConfig, SemgrepScannerConfig
+        config = PolicyConfig(
+            scanners=ScannersConfig(
+                semgrep=SemgrepScannerConfig(
+                    enabled=True,
+                    fail_on_severity=[Severity.CRITICAL]
+                )
+            )
+        )
+        engine = PolicyEngine(config)
+        high_finding = Finding(
+            id="semgrep-rule-high",
+            title="High semgrep finding",
+            severity=Severity.HIGH,
+            scanner=ScannerType.SEMGREP,
+        )
+        res_high = engine.evaluate([high_finding])
+        assert res_high.decision == GateDecision.WARN
+        assert len(res_high.blocking_findings) == 0
+
+        crit_finding = Finding(
+            id="semgrep-rule-crit",
+            title="Crit semgrep finding",
+            severity=Severity.CRITICAL,
+            scanner=ScannerType.SEMGREP,
+        )
+        res_crit = engine.evaluate([crit_finding])
+        assert res_crit.decision == GateDecision.BLOCK
+
+    def test_dependency_review_fail_on_severity_enforced(self):
+        from pipelineshield.models import DependencyReviewScannerConfig, ScannersConfig
+        config = PolicyConfig(
+            scanners=ScannersConfig(
+                dependency_review=DependencyReviewScannerConfig(
+                    enabled=True,
+                    fail_on_severity=[Severity.CRITICAL]
+                )
+            )
+        )
+        engine = PolicyEngine(config)
+        high_finding = Finding(
+            id="GHSA-high",
+            title="High dep vuln",
+            severity=Severity.HIGH,
+            scanner=ScannerType.DEPENDENCY_REVIEW,
+        )
+        res_high = engine.evaluate([high_finding])
+        assert res_high.decision == GateDecision.WARN
+        assert len(res_high.blocking_findings) == 0
+
+    def test_dependency_review_deny_severities_fallback(self):
+        from pipelineshield.models import DependencyReviewScannerConfig, ScannersConfig
+        config = PolicyConfig(
+            scanners=ScannersConfig(
+                dependency_review=DependencyReviewScannerConfig(
+                    enabled=True,
+                    deny_severities=[Severity.CRITICAL]
+                )
+            )
+        )
+        engine = PolicyEngine(config)
+        high_finding = Finding(
+            id="GHSA-high",
+            title="High dep vuln",
+            severity=Severity.HIGH,
+            scanner=ScannerType.DEPENDENCY_REVIEW,
+        )
+        res_high = engine.evaluate([high_finding])
+        assert res_high.decision == GateDecision.WARN
+        assert len(res_high.blocking_findings) == 0
+
+    def test_omitted_scanner_severity_defers_to_global_threshold(self):
+        from pipelineshield.models import ScannersConfig, TrivyScannerConfig
+        config = PolicyConfig(
+            scanners=ScannersConfig(
+                trivy=TrivyScannerConfig(
+                    enabled=True,
+                    fail_on_cve_severity=None  # Omitted -> global threshold governs
+                )
+            )
+        )
+        engine = PolicyEngine(config)
+        high_finding = Finding(
+            id="CVE-2024-HIGH",
+            title="High vuln",
+            severity=Severity.HIGH,
+            scanner=ScannerType.TRIVY,
+        )
+        res = engine.evaluate([high_finding])
+        assert res.decision == GateDecision.BLOCK
+        assert len(res.blocking_findings) == 1
+

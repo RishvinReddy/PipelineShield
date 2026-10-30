@@ -178,27 +178,33 @@ class PolicyEngine:
             if not is_blocking:
                 global_threshold = self._resolve_threshold(finding.severity)
 
-                if global_threshold == GateDecision.PASS:
-                    # Explicit PASS threshold takes precedence over scanner default fail list
-                    pass
+                # Determine scanner-specific blocking severities if configured
+                scanner_fail_list: list[Severity] | None = None
+                if finding.scanner == ScannerType.TRIVY:
+                    if self.config.scanners.trivy.fail_on_cve_severity:
+                        scanner_fail_list = self.config.scanners.trivy.fail_on_cve_severity
+                elif finding.scanner == ScannerType.SEMGREP:
+                    if self.config.scanners.semgrep.fail_on_severity:
+                        scanner_fail_list = self.config.scanners.semgrep.fail_on_severity
+                elif finding.scanner == ScannerType.DEPENDENCY_REVIEW:
+                    dep_cfg = self.config.scanners.dependency_review
+                    if dep_cfg.fail_on_severity:
+                        scanner_fail_list = dep_cfg.fail_on_severity
+                    elif dep_cfg.deny_severities:
+                        scanner_fail_list = dep_cfg.deny_severities
+
+                if scanner_fail_list is not None:
+                    # Scanner-specific threshold overrides global BLOCK decision
+                    if finding.severity in scanner_fail_list:
+                        is_blocking = True
+                    else:
+                        # Findings excluded from scanner-specific BLOCK list downgrade to WARN
+                        # if global threshold was BLOCK or WARN, or PASS if global threshold was PASS
+                        if global_threshold in (GateDecision.BLOCK, GateDecision.WARN):
+                            is_warning = True
                 else:
-                    # Check scanner-specific severity rules
-                    if (
-                        finding.scanner == ScannerType.TRIVY
-                        and finding.severity in self.config.scanners.trivy.fail_on_cve_severity
-                    ):
-                        is_blocking = True
-                    elif (
-                        finding.scanner == ScannerType.SEMGREP
-                        and finding.severity in self.config.scanners.semgrep.fail_on_severity
-                    ):
-                        is_blocking = True
-                    elif (
-                        finding.scanner == ScannerType.DEPENDENCY_REVIEW
-                        and finding.severity in self.config.scanners.dependency_review.deny_severities
-                    ):
-                        is_blocking = True
-                    elif global_threshold == GateDecision.BLOCK:
+                    # Global threshold governs when scanner-specific list is not specified
+                    if global_threshold == GateDecision.BLOCK:
                         is_blocking = True
                     elif global_threshold == GateDecision.WARN:
                         is_warning = True

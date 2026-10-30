@@ -64,7 +64,7 @@ PipelineShield/
 │   │   ├── policy_engine.py # Gate evaluation & license enforcement
 │   │   ├── reporter.py      # JSON & Markdown report generators
 │   │   └── cli.py           # CLI with exit codes 0 / 1 / 2
-│   └── tests/              # 216 pytest unit & integration tests
+│   └── tests/              # 230 pytest unit & integration tests
 ├── dashboard/              # Next.js App Router web dashboard
 │   ├── src/app/            # App Router pages and health route
 │   ├── vercel.json         # Vercel deployment configuration
@@ -153,17 +153,17 @@ thresholds:
 scanners:
   trivy:
     enabled: true
-    fail_on_cve_severity: ["CRITICAL", "HIGH"]
-    scan_types: ["vuln", "config", "secret"]
+    fail_on_cve_severity: ["CRITICAL", "HIGH"] # Authoritative override for Trivy CVEs
+    scan_types: ["vuln", "config", "secret"]   # Dynamically fed to --scanners in CI
     ignore_unfixed: false
 
   semgrep:
     enabled: true
-    rulesets:
+    rulesets:                                  # Dynamically fed to --config in CI
       - "p/security-audit"
       - "p/secrets"
       - "p/owasp-top-ten"
-    fail_on_severity: ["ERROR"]
+    fail_on_severity: ["ERROR"]                # Authoritative override for Semgrep findings
 
   dependency_review:
     enabled: true
@@ -177,10 +177,16 @@ scanners:
     deny_licenses:
       - "GPL-3.0"
       - "AGPL-3.0"
-    deny_severities:
+    deny_severities:                           # Authoritative override for Dependency Review
       - "critical"
       - "high"
 ```
+
+### Policy Semantics & Configuration Hierarchy
+- **Authoritative Scanner Overrides**: When a scanner specifies a fail list (e.g. `fail_on_cve_severity`, `fail_on_severity`, or `deny_severities`), that list authoritatively determines which severities from that scanner trigger `BLOCK`. Findings from that scanner excluded from the fail list downgrade to `WARN` rather than forcing a gate failure.
+- **Global Threshold Fallback**: If a scanner's severity list is omitted (`None`), the global `thresholds` govern.
+- **Dependency Review Filtering**: GitHub Dependency Review Action findings are filtered by `change_type`. Only newly added dependencies (`change_type: "added"`) are evaluated for introduction-risk (vulnerabilities and license policies). Removed dependencies (`change_type: "removed"`) are skipped so removing a dependency never blocks a PR.
+- **Pinned Scanner Tooling**: CI installs **Trivy v0.76.1** verified against official SHA256 checksum (`c7cbe3137fb8a48a17574bede3dd6beb16742d1e9772929940fc90082c39d9c0`), **Semgrep v1.183.0**, and uses **Dependency Review Action** (`actions/dependency-review-action@3c4e3dcb1aa7874d2c16be7d79418e9b7efd6261` with `warn-only: true`).
 
 ---
 
@@ -188,7 +194,7 @@ scanners:
 
 - [x] **Phase 1**: Repository and Development Environment Scaffold
 - [x] **Phase 2**: Python Security Policy Engine Implementation
-- [x] **Phase 3**: Automated Policy Engine Testing Suite (216 tests, 92% coverage)
+- [x] **Phase 3**: Automated Policy Engine Testing Suite (230 tests, 93% coverage)
 - [x] **Phase 4**: Trivy, Semgrep, and Dependency Review CI Integration (Fail-closed)
 - [x] **Phase 5**: Next.js Security Dashboard Interface & Artifact Uploader
 - [ ] **Phase 6**: Vercel Live Deployment (Configuration present; deployment pending)

@@ -1,0 +1,13 @@
+[
+  {
+    "change_type": "removed",
+    "manifest": "package.json",
+    "ecosystem": "npm",
+    "name": "gpl-library",
+    "version": "1.0.0",
+    "package_url": "pkg:npm/gpl-library@1.0.0",
+    "license": "GPL-3.0",
+    "source_repository_url": "https://github.com/example/gpl-library",
+    "vulnerabilities": []
+  }
+]

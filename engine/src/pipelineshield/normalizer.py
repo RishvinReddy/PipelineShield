@@ -382,10 +382,29 @@ def normalize_dependency_review_json(data: Any) -> List[Finding]:
                 f"Dependency Review: item[{idx}] must be a mapping. Got: {type(item).__name__}"
             )
         ctx = f"Dependency Review item[{idx}]"
+        # Filter dependency changes to introduction risks ("added")
+        change_type = item.get("change_type")
+        if change_type is not None:
+            if not isinstance(change_type, str):
+                raise NormalizationError(
+                    f"{ctx}: 'change_type' must be a string, got: {type(change_type).__name__}"
+                )
+            change_type_clean = change_type.strip().lower()
+            if change_type_clean == "removed":
+                # Deletion of a dependency eliminates risk — do not block PR
+                continue
+            if change_type_clean != "added":
+                raise NormalizationError(
+                    f"{ctx}: unrecognized 'change_type' '{change_type}'. Expected 'added' or 'removed'."
+                )
 
         # Support GitHub Action dependency-changes format with nested vulnerabilities
-        vulns = item.get("vulnerabilities")
-        if vulns is not None and isinstance(vulns, list):
+        if "vulnerabilities" in item or change_type is not None:
+            vulns = item.get("vulnerabilities")
+            if vulns is not None and not isinstance(vulns, list):
+                raise NormalizationError(
+                    f"{ctx}: 'vulnerabilities' must be a list. Got: {type(vulns).__name__}"
+                )
             pkg_name = _safe_str(item.get("name") or item.get("package_name"), "name", ctx)
             installed_ver = item.get("version") or None
             lic = item.get("license") or None

@@ -339,6 +339,71 @@ class TestDepReviewNormalizer:
         assert findings[0].license == "GPL-3.0"
         assert findings[0].package_name == "gpl-pkg"
 
+    def test_fixture_official_added_vuln(self):
+        data = json.loads((FIXTURES / "dep_review_official_added_vuln.json").read_text())
+        findings = normalize_dependency_review_json(data)
+        assert len(findings) == 1
+        f = findings[0]
+        assert f.id == "GHSA-35jh-r3h4-6jhm"
+        assert f.severity == Severity.CRITICAL
+        assert f.package_name == "lodash"
+        assert f.installed_version == "4.17.15"
+        assert f.fixed_version == "4.17.21"
+        assert f.license == "MIT"
+        assert f.scanner == ScannerType.DEPENDENCY_REVIEW
+
+    def test_fixture_official_added_clean(self):
+        data = json.loads((FIXTURES / "dep_review_official_added_clean.json").read_text())
+        findings = normalize_dependency_review_json(data)
+        assert len(findings) == 1
+        f = findings[0]
+        assert f.id == "LIC-chalk"
+        assert f.severity == Severity.INFO
+        assert f.package_name == "chalk"
+        assert f.license == "MIT"
+
+    def test_fixture_official_added_denied_license(self):
+        data = json.loads((FIXTURES / "dep_review_official_added_denied_license.json").read_text())
+        findings = normalize_dependency_review_json(data)
+        assert len(findings) == 1
+        f = findings[0]
+        assert f.id == "LIC-gpl-copyleft-lib"
+        assert f.license == "GPL-3.0"
+        assert f.severity == Severity.INFO  # Normalized finding has INFO, policy engine enforces license
+
+    def test_fixture_official_removed_vuln_is_skipped(self):
+        """Removed vulnerable dependencies must NOT produce findings or block PRs."""
+        data = json.loads((FIXTURES / "dep_review_official_removed_vuln.json").read_text())
+        findings = normalize_dependency_review_json(data)
+        assert findings == []
+
+    def test_fixture_official_removed_denied_license_is_skipped(self):
+        """Removed prohibited-license dependencies must NOT produce findings or block PRs."""
+        data = json.loads((FIXTURES / "dep_review_official_removed_denied_license.json").read_text())
+        findings = normalize_dependency_review_json(data)
+        assert findings == []
+
+    def test_invalid_change_type_raises(self):
+        data = [{"change_type": "modified", "name": "foo", "vulnerabilities": []}]
+        with pytest.raises(NormalizationError, match="change_type"):
+            normalize_dependency_review_json(data)
+
+    def test_non_string_change_type_raises(self):
+        data = [{"change_type": 123, "name": "foo", "vulnerabilities": []}]
+        with pytest.raises(NormalizationError, match="must be a string"):
+            normalize_dependency_review_json(data)
+
+    def test_non_dict_item_raises(self):
+        data = ["not-a-dict"]
+        with pytest.raises(NormalizationError, match="must be a mapping"):
+            normalize_dependency_review_json(data)
+
+    def test_invalid_vulnerabilities_type_raises(self):
+        data = [{"name": "foo", "vulnerabilities": "not-a-list"}]
+        with pytest.raises(NormalizationError, match="must be a list"):
+            normalize_dependency_review_json(data)
+
+
 
 # ---------------------------------------------------------------------------
 # Generic normalize_finding_dict

@@ -98,14 +98,25 @@ jobs:
 
       - name: Install & Run Trivy Vulnerability Scanner
         run: |
-          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
-          trivy fs --exit-code 0 --format json --output reports/trivy.json .
+          TRIVY_VERSION="0.76.1"
+          TRIVY_SHA256="c7cbe3137fb8a48a17574bede3dd6beb16742d1e9772929940fc90082c39d9c0"
+          curl -sSL -O "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          echo "${TRIVY_SHA256}  trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" | sha256sum --check
+          tar -xzf "trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz" -C /usr/local/bin trivy
+          rm -f "trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+
+          # Extract scan types configured in policy.yaml
+          TRIVY_SCANNERS=$(python3 -c "from pipelineshield.config import load_policy; p = load_policy('config/policy.yaml'); print(','.join(p.scanners.trivy.scan_types))")
+          trivy fs --scanners "$TRIVY_SCANNERS" --exit-code 0 --format json --output reports/trivy.json .
           python3 -c "import json; json.load(open('reports/trivy.json'))"
 
       - name: Install & Run Semgrep SAST
         run: |
-          pip install semgrep
-          semgrep scan --config "p/security-audit" --config "p/secrets" --config "p/owasp-top-ten" --json --output reports/semgrep.json
+          pip install semgrep==1.183.0
+
+          # Build ruleset arguments configured in policy.yaml
+          SEMGREP_RULES=$(python3 -c "from pipelineshield.config import load_policy; p = load_policy('config/policy.yaml'); print(' '.join(f'--config \"{r}\"' for r in p.scanners.semgrep.rulesets))")
+          eval "semgrep scan $SEMGREP_RULES --json --output reports/semgrep.json"
           python3 -c "import json; json.load(open('reports/semgrep.json'))"
 
       - name: Run GitHub Dependency Review
@@ -113,7 +124,7 @@ jobs:
         if: github.event_name == 'pull_request'
         uses: actions/dependency-review-action@3c4e3dcb1aa7874d2c16be7d79418e9b7efd6261 # v4.8.2
         with:
-          fail-on-severity: none
+          warn-only: true
           license-check: false
 
       - name: Export Dependency Review findings
@@ -121,7 +132,11 @@ jobs:
         env:
           DEP_CHANGES: ${{ steps.dependency-review.outputs.dependency-changes }}
         run: |
-          echo "$DEP_CHANGES" > reports/dependency-review.json
+          if [ -z "${DEP_CHANGES// }" ]; then
+            echo "[]" > reports/dependency-review.json
+          else
+            echo "$DEP_CHANGES" > reports/dependency-review.json
+          fi
           python3 -c "import json; json.load(open('reports/dependency-review.json'))"
 
       - name: Run PipelineShield Security Gate

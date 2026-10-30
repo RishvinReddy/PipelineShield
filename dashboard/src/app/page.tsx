@@ -50,12 +50,17 @@ interface EvaluationResult {
   decision: "PASS" | "WARN" | "BLOCK" | "ERROR";
   reasons: string[];
   summary: EvaluationSummary;
+  findings?: Finding[];
   blocking_findings: Finding[];
   warning_findings: Finding[];
-  advisory_findings: Finding[];
+  advisory_findings?: Finding[];
   exempted_findings: Finding[];
   evaluated_at?: string;
   policy_metadata?: Record<string, string>;
+}
+
+interface ProcessedFinding extends Finding {
+  gateCategory: "blocking" | "warning" | "advisory" | "exempted";
 }
 
 // Sample reports for demonstration
@@ -242,6 +247,27 @@ const SAMPLE_REPORTS: Record<string, { label: string; tag: string; isDemo: boole
   },
 };
 
+function validateFinding(f: unknown, listName: string, index: number): { valid: boolean; error?: string } {
+  if (!f || typeof f !== "object" || Array.isArray(f)) {
+    return { valid: false, error: `${listName}[${index}] must be a valid JSON object.` };
+  }
+  const rec = f as Record<string, unknown>;
+  if (typeof rec.id !== "string" || !rec.id.trim()) {
+    return { valid: false, error: `${listName}[${index}]: 'id' must be a non-empty string.` };
+  }
+  if (typeof rec.title !== "string" || !rec.title.trim()) {
+    return { valid: false, error: `${listName}[${index}]: 'title' must be a non-empty string.` };
+  }
+  const validSeverities = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"];
+  if (typeof rec.severity !== "string" || !validSeverities.includes(rec.severity.toUpperCase())) {
+    return {
+      valid: false,
+      error: `${listName}[${index}]: 'severity' must be one of: ${validSeverities.join(", ")}.`,
+    };
+  }
+  return { valid: true };
+}
+
 function validateReportSchema(obj: unknown): { valid: boolean; error?: string } {
   if (!obj || typeof obj !== "object" || Array.isArray(obj)) {
     return { valid: false, error: "Root must be a valid JSON object." };
@@ -258,18 +284,45 @@ function validateReportSchema(obj: unknown): { valid: boolean; error?: string } 
     return { valid: false, error: "Missing or invalid 'summary' object." };
   }
   const summary = rec.summary as Record<string, unknown>;
-  const numericFields = ["total_findings", "critical", "high", "medium", "low", "blocking_count", "warning_count"];
+  const numericFields = [
+    "total_findings",
+    "critical",
+    "high",
+    "medium",
+    "low",
+    "info",
+    "exempted",
+    "blocking_count",
+    "warning_count",
+  ];
   for (const field of numericFields) {
     if (typeof summary[field] !== "number") {
       return { valid: false, error: `Summary field '${field}' must be a number.` };
     }
   }
-  if (rec.blocking_findings && !Array.isArray(rec.blocking_findings)) {
-    return { valid: false, error: "'blocking_findings' must be an array." };
+
+  // Validate finding arrays and their items
+  const findingArrays: Array<[string, unknown]> = [
+    ["blocking_findings", rec.blocking_findings],
+    ["warning_findings", rec.warning_findings],
+    ["exempted_findings", rec.exempted_findings],
+    ["findings", rec.findings],
+  ];
+
+  for (const [name, arr] of findingArrays) {
+    if (arr !== undefined && arr !== null) {
+      if (!Array.isArray(arr)) {
+        return { valid: false, error: `'${name}' must be an array.` };
+      }
+      for (let i = 0; i < arr.length; i++) {
+        const itemVal = validateFinding(arr[i], name, i);
+        if (!itemVal.valid) {
+          return itemVal;
+        }
+      }
+    }
   }
-  if (rec.warning_findings && !Array.isArray(rec.warning_findings)) {
-    return { valid: false, error: "'warning_findings' must be an array." };
-  }
+
   return { valid: true };
 }
 
@@ -294,9 +347,29 @@ export default function Home() {
 
   const isDemoActive = activeReportKey !== "custom";
 
-  // Combine all findings for interactive search and filter
-  const allFindings = useMemo(() => {
-    const list: (Finding & { gateCategory: "blocking" | "warning" | "advisory" | "exempted" })[] = [];
+  // Combine all findings for interactive search and filter:
+  // Uses 'findings' as the authoritative superset to guarantee PASS findings are displayed
+  const allFindings = useMemo<ProcessedFinding[]>(() => {
+    if (Array.isArray(currentResult.findings) && currentResult.findings.length > 0) {
+      const blockingIds = new Set((currentResult.blocking_findings || []).map((f) => f.id));
+      const warningIds = new Set((currentResult.warning_findings || []).map((f) => f.id));
+      const exemptedIds = new Set((currentResult.exempted_findings || []).map((f) => f.id));
+
+      return currentResult.findings.map((f: Finding) => {
+        let gateCategory: "blocking" | "warning" | "advisory" | "exempted" = "advisory";
+        if (blockingIds.has(f.id)) {
+          gateCategory = "blocking";
+        } else if (warningIds.has(f.id)) {
+          gateCategory = "warning";
+        } else if (exemptedIds.has(f.id)) {
+          gateCategory = "exempted";
+        }
+        return { ...f, gateCategory };
+      });
+    }
+
+    // Fallback if 'findings' is not populated (e.g. older format)
+    const list: ProcessedFinding[] = [];
     (currentResult.blocking_findings || []).forEach((f) => list.push({ ...f, gateCategory: "blocking" }));
     (currentResult.warning_findings || []).forEach((f) => list.push({ ...f, gateCategory: "warning" }));
     (currentResult.advisory_findings || []).forEach((f) => list.push({ ...f, gateCategory: "advisory" }));
@@ -340,6 +413,7 @@ export default function Home() {
           decision: (parsed.decision || "BLOCK").toUpperCase(),
           reasons: Array.isArray(parsed.reasons) ? parsed.reasons : [],
           summary: parsed.summary,
+          findings: Array.isArray(parsed.findings) ? parsed.findings : undefined,
           blocking_findings: Array.isArray(parsed.blocking_findings) ? parsed.blocking_findings : [],
           warning_findings: Array.isArray(parsed.warning_findings) ? parsed.warning_findings : [],
           advisory_findings: Array.isArray(parsed.advisory_findings) ? parsed.advisory_findings : [],
@@ -881,7 +955,7 @@ export default function Home() {
                                   CWE Identifiers
                                 </span>
                                 <div className="mt-1 flex flex-wrap gap-1.5">
-                                  {finding.cwe_ids.map((cwe) => (
+                                  {finding.cwe_ids.map((cwe: string) => (
                                     <span
                                       key={cwe}
                                       className="px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300 font-mono text-[11px]"

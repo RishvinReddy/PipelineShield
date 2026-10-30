@@ -1,0 +1,13 @@
+[
+  {
+    "change_type": "added",
+    "manifest": "package.json",
+    "ecosystem": "npm",
+    "name": "gpl-copyleft-lib",
+    "version": "1.0.0",
+    "package_url": "pkg:npm/gpl-copyleft-lib@1.0.0",
+    "license": "GPL-3.0",
+    "source_repository_url": "https://github.com/example/gpl-copyleft-lib",
+    "vulnerabilities": []
+  }
+]

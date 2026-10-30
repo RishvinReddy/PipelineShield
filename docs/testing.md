@@ -29,16 +29,17 @@ source .venv/bin/activate
 pytest --cov=pipelineshield --cov-report=term-missing
 ```
 
-### Test Suite Structure (216 passing tests, 92% coverage)
+### Test Suite Structure (230 passing tests, 93% coverage)
 
 - `tests/test_imports.py`: Verifies module imports, package structure, and top-level exports.
 - `tests/test_models.py`: Validates Pydantic data schemas, enums, severity ordering, and immutability.
 - `tests/test_config.py`: Verifies YAML parsing, schema defaults, strict validation, and rejection of invalid/unknown scanner options.
-- `tests/test_normalizer.py`: Validates native parsing of Trivy, Semgrep, and Dependency Review JSON fixtures and GitHub Action formats.
-- `tests/test_policy_engine.py`: Tests threshold evaluation, scanner enablement, Trivy `ignore_unfixed`, license allow/deny lists, path exemptions, and error-guard wrapper.
+- `tests/test_normalizer.py`: Validates native parsing of Trivy, Semgrep, and Dependency Review JSON fixtures, `change_type` filtering, and official GitHub Action formats.
+- `tests/test_policy_engine.py`: Tests threshold evaluation, authoritative scanner-specific overrides, scanner enablement, Trivy `ignore_unfixed`, license allow/deny lists, path exemptions, and error-guard wrapper.
 - `tests/test_reporter.py`: Tests JSON report generation, Markdown tables, and markdown-escaping for security.
 - `tests/test_cli.py`: End-to-end CLI tests covering exit codes (0/1/2), multi-scanner flags, and malformed inputs.
-- `tests/fixtures/`: Real-world scanner JSON datasets for clean runs, CVEs, SAST findings, and dependency changes.
+- `tests/fixtures/`: Real-world scanner JSON datasets for clean runs, CVEs, SAST findings, official Dependency Review additions/removals, and malformed inputs.
+- `scripts/verify_dashboard_report.py`: Automated end-to-end verification script testing CLI report generation, dashboard schema compatibility, finding retention, and exit codes (0/1/2).
 
 ---
 

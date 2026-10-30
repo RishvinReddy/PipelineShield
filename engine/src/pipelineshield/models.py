@@ -131,9 +131,7 @@ class ScannerConfig(BaseModel):
 
 class TrivyScannerConfig(ScannerConfig):
     """Typed configuration options for Trivy vulnerability scanner."""
-    fail_on_cve_severity: List[Severity] = Field(
-        default_factory=lambda: [Severity.CRITICAL, Severity.HIGH]
-    )
+    fail_on_cve_severity: Optional[List[Severity]] = None
     scan_types: List[str] = Field(
         default_factory=lambda: ["vuln", "config", "secret"]
     )
@@ -143,7 +141,7 @@ class TrivyScannerConfig(ScannerConfig):
     @classmethod
     def validate_trivy_severities(cls, v: Any) -> Any:
         if v is None:
-            return []
+            return None
         if isinstance(v, list):
             res = []
             for item in v:
@@ -174,15 +172,13 @@ class SemgrepScannerConfig(ScannerConfig):
     rulesets: List[str] = Field(
         default_factory=lambda: ["p/security-audit", "p/secrets", "p/owasp-top-ten"]
     )
-    fail_on_severity: List[Severity] = Field(
-        default_factory=lambda: [Severity.CRITICAL, Severity.HIGH]
-    )
+    fail_on_severity: Optional[List[Severity]] = None
 
     @field_validator("fail_on_severity", mode="before")
     @classmethod
     def validate_semgrep_severities(cls, v: Any) -> Any:
         if v is None:
-            return []
+            return None
         mapping = {
             "ERROR": Severity.HIGH,
             "WARNING": Severity.MEDIUM,
@@ -211,9 +207,7 @@ class DependencyReviewScannerConfig(ScannerConfig):
     """Typed configuration options for GitHub Dependency Review scanner."""
     allow_licenses: List[str] = Field(default_factory=list)
     deny_licenses: List[str] = Field(default_factory=list)
-    deny_severities: List[Severity] = Field(
-        default_factory=lambda: [Severity.CRITICAL, Severity.HIGH]
-    )
+    deny_severities: Optional[List[Severity]] = None
     fail_on_severity: Optional[List[Severity]] = None
 
     @field_validator("deny_severities", "fail_on_severity", mode="before")
