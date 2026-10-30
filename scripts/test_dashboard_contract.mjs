@@ -13,7 +13,7 @@
  *    - secret detection scan (BLOCK, exit 1)
  *    - mixed-scanner results (retains all findings, BLOCK, exit 1)
  *    - disabled scanner configuration (marked DISABLED, exit 0)
- *    - all-scanners-disabled mode without scanner input (PASS with warning, exit 0)
+ *    - all-scanners-disabled mode without scanner input (ERROR, exit 2)
  *    - non-PR push event (Dependency Review marked NOT_APPLICABLE, exit 0)
  *    - ERROR decision report handling (exit 2)
  * 2. Strict rejection of malformed test vectors:
