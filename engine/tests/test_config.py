@@ -302,3 +302,31 @@ class TestValidConfigurations:
         """)
         with pytest.raises(ValueError, match="Invalid scanner configuration"):
             load_policy(path)
+
+    def test_trivy_invalid_scan_type_rejected(self, write_yaml):
+        path = write_yaml("""
+            version: "1.0"
+            scanners:
+              trivy:
+                enabled: true
+                scan_types:
+                  - config
+        """)
+        with pytest.raises(ValueError, match="unsupported scan_type 'config'"):
+            load_policy(path)
+
+    def test_trivy_valid_scan_types_accepted(self, write_yaml):
+        path = write_yaml("""
+            version: "1.0"
+            scanners:
+              trivy:
+                enabled: true
+                scan_types:
+                  - vuln
+                  - misconfig
+                  - secret
+                  - license
+        """)
+        policy = load_policy(path)
+        assert policy.scanners.trivy.scan_types == ["vuln", "misconfig", "secret", "license"]
+

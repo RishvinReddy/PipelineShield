@@ -11,10 +11,10 @@
 
 ## 🌟 Capabilities & Status
 
-- **Multi-Scanner Policy Enforcement**: Native parsers for **Trivy** (CVEs & misconfigurations), **Semgrep CE** (SAST & secret detection), and **GitHub Dependency Review** (PR dependency diffs and licenses).
-- **Declarative Policy Engine**: Typed, schema-validated policy engine driven by [`config/policy.yaml`](config/policy.yaml) with Pydantic validation enforcing customizable severity thresholds (`BLOCK`, `WARN`, `PASS`) and license allow/deny lists.
+- **Multi-Scanner Policy Enforcement**: Native parsers for **Trivy** (CVEs, IaC misconfigurations, and leaked secrets), **Semgrep CE** (SAST & secret detection), and **GitHub Dependency Review** (PR dependency diffs and licenses).
+- **Declarative Policy Engine**: Typed, schema-validated policy engine driven by [`config/policy.yaml`](config/policy.yaml) with Pydantic validation enforcing customizable severity thresholds (`BLOCK`, `WARN`, `PASS`), scanner enablement gating, and license allow/deny lists.
 - **Fail-Closed CI/CD Gate**: Enforces fail-closed execution in GitHub Actions: scanner crashes, installation failures, missing output files, and malformed JSON fail the CI job immediately.
-- **Unified Security Dashboard**: Next.js App Router interface to inspect security posture and upload evaluation artifacts (`reports/security-summary.json`). *Note: Includes synthetic demonstration reports; external live telemetry streaming is not implemented.*
+- **Unified Security Dashboard**: Next.js App Router interface to inspect security posture and upload evaluation artifacts (`reports/security-summary.json`). Validated against an authoritative shared TypeScript contract schema (`dashboard/src/lib/report-validator.ts`).
 - **Zero-Cost Architecture**: Built on open-source scanners, GitHub Actions, and static/serverless hosting—no external databases, paid cloud servers, or commercial API keys required.
 
 ---
@@ -26,7 +26,7 @@ Developer Pull Request
          │
          ▼
 GitHub Actions CI/CD (Least Privilege: contents: read)
-  ├── 1. Trivy Scanner (Filesystem & Dependency CVEs)
+  ├── 1. Trivy Scanner (Vulnerabilities, Misconfigurations & Secrets)
   ├── 2. Semgrep SAST (Insecure Code Patterns & Secrets)
   └── 3. GitHub Dependency Review (PR Dependency Diffs & Licenses)
          │
@@ -41,7 +41,7 @@ Python Security Policy Engine (Fail-Closed)
                     │
                     ▼
           Next.js Security Dashboard
-          Interactive visualization of evaluation artifacts
+          Shared TypeScript contract validation & interactive artifact inspection
 ```
 
 ---
@@ -52,19 +52,36 @@ Python Security Policy Engine (Fail-Closed)
 PipelineShield/
 ├── .github/
 │   └── workflows/
-│       └── security-gate.yml # CI workflow (fail-closed, pinned commit SHAs)
+│       └── security-gate.yml # CI workflow (fail-closed, conditional execution, pinned SHAs)
 ├── config/
 │   └── policy.yaml         # Declarative DevSecOps security policy
 ├── engine/                 # Python Security Policy Engine
 │   ├── pyproject.toml      # Packaging & test dependencies
 │   ├── src/pipelineshield/ # Source package
-│   │   ├── models.py        # Pydantic schemas (typed scanner configs)
-│   │   ├── config.py        # Strict policy YAML loader
-│   │   ├── normalizer.py    # Native parsers (Trivy, Semgrep, Dep Review)
-│   │   ├── policy_engine.py # Gate evaluation & license enforcement
+│   │   ├── models.py        # Pydantic schemas (typed configs & scanner_status)
+│   │   ├── config.py        # Strict policy YAML loader & scanner validator
+│   │   ├── normalizer.py    # Native parsers (Trivy vuln/misconfig/secret, Semgrep, Dep Review)
+│   │   ├── policy_engine.py # Gate evaluation & scanner enablement enforcement
 │   │   ├── reporter.py      # JSON & Markdown report generators
 │   │   └── cli.py           # CLI with exit codes 0 / 1 / 2
-│   └── tests/              # 230 pytest unit & integration tests
+│   └── tests/              # 252 pytest unit & integration tests (93% coverage)
+├── dashboard/              # Next.js App Router web dashboard
+│   ├── src/lib/            # Authoritative shared TypeScript validator (report-validator.ts)
+│   ├── src/app/            # App Router pages and health route
+│   ├── vercel.json         # Vercel deployment configuration
+│   └── package.json        # Frontend dependencies & test:contract script
+├── examples/               # Example vulnerable & clean scan reports
+├── scripts/                # Verification & shared contract test suites
+│   ├── test_dashboard_contract.mjs # Browser validator test with real CLI reports
+│   └── verify_dashboard_report.py  # End-to-end Python & contract verification runner
+├── docs/                   # Technical documentation
+│   ├── architecture.md     # System design & data flow
+│   ├── testing.md          # Test strategy & local reproduction commands
+│   └── threat-model.md     # CI/CD security threat model & least privilege
+├── LICENSE                 # MIT License
+├── README.md               # Project documentation
+└── PROJECT_PLAN.md         # Phased implementation roadmap & progress
+```
 ├── dashboard/              # Next.js App Router web dashboard
 │   ├── src/app/            # App Router pages and health route
 │   ├── vercel.json         # Vercel deployment configuration
@@ -154,7 +171,7 @@ scanners:
   trivy:
     enabled: true
     fail_on_cve_severity: ["CRITICAL", "HIGH"] # Authoritative override for Trivy CVEs
-    scan_types: ["vuln", "config", "secret"]   # Dynamically fed to --scanners in CI
+    scan_types: ["vuln", "misconfig", "secret"]   # Dynamically fed to --scanners in CI
     ignore_unfixed: false
 
   semgrep:
@@ -194,7 +211,7 @@ scanners:
 
 - [x] **Phase 1**: Repository and Development Environment Scaffold
 - [x] **Phase 2**: Python Security Policy Engine Implementation
-- [x] **Phase 3**: Automated Policy Engine Testing Suite (230 tests, 93% coverage)
+- [x] **Phase 3**: Automated Policy Engine Testing Suite (252 tests, 93% coverage)
 - [x] **Phase 4**: Trivy, Semgrep, and Dependency Review CI Integration (Fail-closed)
 - [x] **Phase 5**: Next.js Security Dashboard Interface & Artifact Uploader
 - [ ] **Phase 6**: Vercel Live Deployment (Configuration present; deployment pending)

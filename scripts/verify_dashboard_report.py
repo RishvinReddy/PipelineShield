@@ -172,14 +172,24 @@ def test_malformed_input_exit_code():
     print("      ✓ Malformed input exited with code 2.")
 
 
+def test_typescript_dashboard_contract():
+    print("[5/5] Testing browser-side TypeScript validator via Node contract test...")
+    node_cmd = ["node", "--experimental-strip-types", str(ROOT_DIR / "scripts" / "test_dashboard_contract.mjs")]
+    res = subprocess.run(node_cmd, cwd=ROOT_DIR, capture_output=True, text=True)
+    assert res.returncode == 0, f"TypeScript dashboard contract test failed:\n{res.stderr}\n{res.stdout}"
+    print("      ✓ TypeScript validator passed all real reports and rejected malformed vectors.")
+
+
 def main():
     print("=== PipelineShield Dashboard Report & CLI Verification ===")
     test_cli_report_generation_and_compatibility()
     test_clean_scan_exit_code()
     test_vulnerable_scan_exit_code()
     test_malformed_input_exit_code()
+    test_typescript_dashboard_contract()
     print("=== All Verifications Passed Successfully ===")
 
 
 if __name__ == "__main__":
     main()
+

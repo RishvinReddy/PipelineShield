@@ -138,6 +138,86 @@ class TestTrivyNormalizer:
         findings = Normalizer.from_trivy(data)
         assert len(findings) == 3
 
+    def test_clean_misconfig_returns_empty(self):
+        data = json.loads((FIXTURES / "trivy_clean_misconfig.json").read_text())
+        findings = normalize_trivy_json(data)
+        assert findings == []
+
+    def test_blocking_misconfig_parsed(self):
+        data = json.loads((FIXTURES / "trivy_blocking_misconfig.json").read_text())
+        findings = normalize_trivy_json(data)
+        assert len(findings) == 1
+        f = findings[0]
+        assert f.id == "DS002"
+        assert f.severity == Severity.HIGH
+        assert f.scanner == ScannerType.TRIVY
+        assert f.file_path == "Dockerfile"
+        assert f.line_number == 1
+        assert "USER" in f.remediation
+        assert f.metadata.get("finding_type") == "misconfiguration"
+
+    def test_clean_secrets_returns_empty(self):
+        data = json.loads((FIXTURES / "trivy_clean_secrets.json").read_text())
+        findings = normalize_trivy_json(data)
+        assert findings == []
+
+    def test_exposed_secret_parsed(self):
+        data = json.loads((FIXTURES / "trivy_exposed_secret.json").read_text())
+        findings = normalize_trivy_json(data)
+        assert len(findings) == 1
+        f = findings[0]
+        assert f.id == "aws-access-key-id"
+        assert f.severity == Severity.CRITICAL
+        assert f.scanner == ScannerType.TRIVY
+        assert f.file_path == "config/settings.py"
+        assert f.line_number == 14
+        assert "Revoke" in f.remediation
+        assert f.metadata.get("category") == "AWS"
+        assert f.metadata.get("finding_type") == "secret"
+
+    def test_mixed_results_parsed(self):
+        data = json.loads((FIXTURES / "trivy_mixed_results.json").read_text())
+        findings = normalize_trivy_json(data)
+        assert len(findings) == 3
+        ids = {f.id for f in findings}
+        assert "CVE-2022-42966" in ids
+        assert "DS002" in ids
+        assert "github-pat" in ids
+        types = {f.metadata.get("finding_type") for f in findings}
+        assert types == {"vulnerability", "misconfiguration", "secret"}
+
+    def test_non_list_misconfigurations_raises(self):
+        data = {"Results": [{"Target": "Dockerfile", "Misconfigurations": "invalid"}]}
+        with pytest.raises(NormalizationError, match="Misconfigurations must be a list"):
+            normalize_trivy_json(data)
+
+    def test_non_dict_misconfiguration_item_raises(self):
+        data = {"Results": [{"Target": "Dockerfile", "Misconfigurations": ["not-a-dict"]}]}
+        with pytest.raises(NormalizationError, match="must be a mapping"):
+            normalize_trivy_json(data)
+
+    def test_missing_misconfiguration_id_raises(self):
+        data = {"Results": [{"Target": "Dockerfile", "Misconfigurations": [{"Severity": "HIGH"}]}]}
+        with pytest.raises(NormalizationError, match="required field 'ID'"):
+            normalize_trivy_json(data)
+
+    def test_non_list_secrets_raises(self):
+        data = {"Results": [{"Target": ".env", "Secrets": "invalid"}]}
+        with pytest.raises(NormalizationError, match="Secrets must be a list"):
+            normalize_trivy_json(data)
+
+    def test_non_dict_secret_item_raises(self):
+        data = {"Results": [{"Target": ".env", "Secrets": ["not-a-dict"]}]}
+        with pytest.raises(NormalizationError, match="must be a mapping"):
+            normalize_trivy_json(data)
+
+    def test_missing_secret_rule_id_raises(self):
+        data = {"Results": [{"Target": ".env", "Secrets": [{"Severity": "CRITICAL"}]}]}
+        with pytest.raises(NormalizationError, match="required field 'RuleID'"):
+            normalize_trivy_json(data)
+
+
+
 
 # ---------------------------------------------------------------------------
 # Semgrep normalizer

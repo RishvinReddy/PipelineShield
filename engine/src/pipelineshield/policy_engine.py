@@ -226,6 +226,20 @@ class PolicyEngine:
         summary.warning_count = len(warning)
 
         # ------------------------------------------------------------------
+        # Determine scanner execution status
+        # ------------------------------------------------------------------
+        scanner_status = {
+            "trivy": "enabled" if self.config.scanners.trivy.enabled else "disabled",
+            "semgrep": "enabled" if self.config.scanners.semgrep.enabled else "disabled",
+            "dependency_review": "enabled" if self.config.scanners.dependency_review.enabled else "disabled",
+        }
+        for sc_name, sc_stat in scanner_status.items():
+            if sc_stat == "disabled":
+                reason_disabled = f"Scanner '{sc_name}' is disabled by policy configuration."
+                if reason_disabled not in reasons:
+                    reasons.append(reason_disabled)
+
+        # ------------------------------------------------------------------
         # Determine overall decision
         # ------------------------------------------------------------------
         decision = self._determine_decision(blocking, warning, reasons)
@@ -239,6 +253,7 @@ class PolicyEngine:
             warning_findings=warning,
             exempted_findings=exempted,
             reasons=reasons,
+            scanner_status=scanner_status,
         )
 
     def _determine_decision(

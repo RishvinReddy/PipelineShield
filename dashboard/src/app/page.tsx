@@ -18,6 +18,7 @@ import {
   ChevronRight,
   RefreshCw,
 } from "lucide-react";
+import { validateReportSchema } from "@/lib/report-validator";
 
 interface Finding {
   id: string;
@@ -57,6 +58,8 @@ interface EvaluationResult {
   exempted_findings: Finding[];
   evaluated_at?: string;
   policy_metadata?: Record<string, string>;
+  scanner_status?: Record<string, string>;
+  errors?: string[];
 }
 
 interface ProcessedFinding extends Finding {
@@ -246,85 +249,6 @@ const SAMPLE_REPORTS: Record<string, { label: string; tag: string; isDemo: boole
     },
   },
 };
-
-function validateFinding(f: unknown, listName: string, index: number): { valid: boolean; error?: string } {
-  if (!f || typeof f !== "object" || Array.isArray(f)) {
-    return { valid: false, error: `${listName}[${index}] must be a valid JSON object.` };
-  }
-  const rec = f as Record<string, unknown>;
-  if (typeof rec.id !== "string" || !rec.id.trim()) {
-    return { valid: false, error: `${listName}[${index}]: 'id' must be a non-empty string.` };
-  }
-  if (typeof rec.title !== "string" || !rec.title.trim()) {
-    return { valid: false, error: `${listName}[${index}]: 'title' must be a non-empty string.` };
-  }
-  const validSeverities = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"];
-  if (typeof rec.severity !== "string" || !validSeverities.includes(rec.severity.toUpperCase())) {
-    return {
-      valid: false,
-      error: `${listName}[${index}]: 'severity' must be one of: ${validSeverities.join(", ")}.`,
-    };
-  }
-  return { valid: true };
-}
-
-function validateReportSchema(obj: unknown): { valid: boolean; error?: string } {
-  if (!obj || typeof obj !== "object" || Array.isArray(obj)) {
-    return { valid: false, error: "Root must be a valid JSON object." };
-  }
-  const rec = obj as Record<string, unknown>;
-  const validDecisions = ["PASS", "WARN", "BLOCK", "ERROR"];
-  if (typeof rec.decision !== "string" || !validDecisions.includes(rec.decision.toUpperCase())) {
-    return {
-      valid: false,
-      error: `Invalid 'decision' field. Must be one of: ${validDecisions.join(", ")}.`,
-    };
-  }
-  if (!rec.summary || typeof rec.summary !== "object" || Array.isArray(rec.summary)) {
-    return { valid: false, error: "Missing or invalid 'summary' object." };
-  }
-  const summary = rec.summary as Record<string, unknown>;
-  const numericFields = [
-    "total_findings",
-    "critical",
-    "high",
-    "medium",
-    "low",
-    "info",
-    "exempted",
-    "blocking_count",
-    "warning_count",
-  ];
-  for (const field of numericFields) {
-    if (typeof summary[field] !== "number") {
-      return { valid: false, error: `Summary field '${field}' must be a number.` };
-    }
-  }
-
-  // Validate finding arrays and their items
-  const findingArrays: Array<[string, unknown]> = [
-    ["blocking_findings", rec.blocking_findings],
-    ["warning_findings", rec.warning_findings],
-    ["exempted_findings", rec.exempted_findings],
-    ["findings", rec.findings],
-  ];
-
-  for (const [name, arr] of findingArrays) {
-    if (arr !== undefined && arr !== null) {
-      if (!Array.isArray(arr)) {
-        return { valid: false, error: `'${name}' must be an array.` };
-      }
-      for (let i = 0; i < arr.length; i++) {
-        const itemVal = validateFinding(arr[i], name, i);
-        if (!itemVal.valid) {
-          return itemVal;
-        }
-      }
-    }
-  }
-
-  return { valid: true };
-}
 
 export default function Home() {
   const [activeReportKey, setActiveReportKey] = useState<string>("vulnerable");

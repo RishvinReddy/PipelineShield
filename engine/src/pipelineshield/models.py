@@ -133,7 +133,7 @@ class TrivyScannerConfig(ScannerConfig):
     """Typed configuration options for Trivy vulnerability scanner."""
     fail_on_cve_severity: Optional[List[Severity]] = None
     scan_types: List[str] = Field(
-        default_factory=lambda: ["vuln", "config", "secret"]
+        default_factory=lambda: ["vuln", "misconfig", "secret"]
     )
     ignore_unfixed: bool = False
 
@@ -158,7 +158,7 @@ class TrivyScannerConfig(ScannerConfig):
     @field_validator("scan_types")
     @classmethod
     def validate_scan_types(cls, v: List[str]) -> List[str]:
-        valid_types = {"vuln", "config", "secret", "license"}
+        valid_types = {"vuln", "misconfig", "secret", "license"}
         for item in v:
             if item not in valid_types:
                 raise ValueError(
@@ -354,3 +354,7 @@ class EvaluationResult(BaseModel):
     exempted_findings: List[Finding] = Field(default_factory=list)
     reasons: List[str] = Field(default_factory=list)
     errors: List[str] = Field(default_factory=list, description="Engine errors that caused ERROR decisions")
+    scanner_status: Dict[str, str] = Field(
+        default_factory=dict, description="Execution status per scanner ('enabled' or 'disabled')"
+    )
+

@@ -94,12 +94,28 @@ class Reporter:
             f"| 🛑 Blocking | {result.summary.blocking_count} |",
             f"| ⚠️ Warnings | {result.summary.warning_count} |",
             "",
+        ]
+
+        if result.scanner_status:
+            md.extend([
+                "## Scanner Execution Status",
+                "",
+                "| Scanner | Status |",
+                "|---|---|",
+            ])
+            for sc_name, sc_stat in sorted(result.scanner_status.items()):
+                sc_icon = "🟢" if sc_stat == "enabled" else "⚪"
+                md.append(f"| `{_escape_md(sc_name)}` | {sc_icon} {_escape_md(sc_stat)} |")
+            md.append("")
+
+        md.extend([
             "## Decision Reasons",
             "",
-        ]
+        ])
 
         for reason in result.reasons:
             md.append(f"- {_escape_md(reason)}")
+
 
         if result.errors:
             md.append("")

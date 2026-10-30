@@ -98,6 +98,11 @@ jobs:
 
       - name: Install & Run Trivy Vulnerability Scanner
         run: |
+          TRIVY_ENABLED=$(python3 -c "from pipelineshield.config import load_policy; p = load_policy('config/policy.yaml'); print('true' if p.scanners.trivy.enabled else 'false')")
+          if [ "$TRIVY_ENABLED" != "true" ]; then
+            echo "Trivy scanner is disabled in policy.yaml — skipping execution."
+            exit 0
+          fi
           TRIVY_VERSION="0.76.1"
           TRIVY_SHA256="c7cbe3137fb8a48a17574bede3dd6beb16742d1e9772929940fc90082c39d9c0"
           curl -sSL -O "https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}/trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
@@ -112,6 +117,11 @@ jobs:
 
       - name: Install & Run Semgrep SAST
         run: |
+          SEMGREP_ENABLED=$(python3 -c "from pipelineshield.config import load_policy; p = load_policy('config/policy.yaml'); print('true' if p.scanners.semgrep.enabled else 'false')")
+          if [ "$SEMGREP_ENABLED" != "true" ]; then
+            echo "Semgrep scanner is disabled in policy.yaml — skipping execution."
+            exit 0
+          fi
           pip install semgrep==1.183.0
 
           # Build ruleset arguments configured in policy.yaml
@@ -119,16 +129,23 @@ jobs:
           eval "semgrep scan $SEMGREP_RULES --json --output reports/semgrep.json"
           python3 -c "import json; json.load(open('reports/semgrep.json'))"
 
+      - name: Check Dependency Review Policy Enablement
+        id: check-dep-review
+        if: github.event_name == 'pull_request'
+        run: |
+          DEP_ENABLED=$(python3 -c "from pipelineshield.config import load_policy; p = load_policy('config/policy.yaml'); print('true' if p.scanners.dependency_review.enabled else 'false')")
+          echo "enabled=$DEP_ENABLED" >> "$GITHUB_OUTPUT"
+
       - name: Run GitHub Dependency Review
         id: dependency-review
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && steps.check-dep-review.outputs.enabled == 'true'
         uses: actions/dependency-review-action@3c4e3dcb1aa7874d2c16be7d79418e9b7efd6261 # v4.8.2
         with:
           warn-only: true
           license-check: false
 
       - name: Export Dependency Review findings
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && steps.check-dep-review.outputs.enabled == 'true'
         env:
           DEP_CHANGES: ${{ steps.dependency-review.outputs.dependency-changes }}
         run: |
@@ -142,6 +159,16 @@ jobs:
       - name: Run PipelineShield Security Gate
         id: gate
         run: |
+          TRIVY_FLAG=""
+          if [ -f reports/trivy.json ]; then
+            TRIVY_FLAG="--trivy reports/trivy.json"
+          fi
+
+          SEMGREP_FLAG=""
+          if [ -f reports/semgrep.json ]; then
+            SEMGREP_FLAG="--semgrep reports/semgrep.json"
+          fi
+
           DEP_FLAG=""
           if [ -f reports/dependency-review.json ]; then
             DEP_FLAG="--dependency-review reports/dependency-review.json"
@@ -149,11 +176,12 @@ jobs:
 
           python -m pipelineshield.cli \
             --policy config/policy.yaml \
-            --trivy reports/trivy.json \
-            --semgrep reports/semgrep.json \
+            $TRIVY_FLAG \
+            $SEMGREP_FLAG \
             $DEP_FLAG \
             --output reports/security-summary.json \
             --summary-md "$GITHUB_STEP_SUMMARY"
+
 
       - name: Upload Security Reports Artifact
         uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1

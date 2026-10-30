@@ -429,6 +429,87 @@ class TestScannerSpecificPolicy:
         result = engine.evaluate([finding])
         assert result.decision == GateDecision.PASS
         assert len(result.blocking_findings) == 0
+        assert result.scanner_status["trivy"] == "disabled"
+        assert result.scanner_status["semgrep"] == "enabled"
+        assert result.scanner_status["dependency_review"] == "enabled"
+        assert any("trivy' is disabled" in r.lower() for r in result.reasons)
+
+    def test_disabled_semgrep_findings_ignored_and_status_recorded(self):
+        from pipelineshield.models import ScannersConfig, SemgrepScannerConfig
+        config = PolicyConfig(
+            scanners=ScannersConfig(
+                semgrep=SemgrepScannerConfig(enabled=False)
+            )
+        )
+        engine = PolicyEngine(config)
+        finding = make_finding(Severity.CRITICAL, scanner=ScannerType.SEMGREP)
+        result = engine.evaluate([finding])
+        assert result.decision == GateDecision.PASS
+        assert result.scanner_status["semgrep"] == "disabled"
+        assert any("semgrep' is disabled" in r.lower() for r in result.reasons)
+
+    def test_disabled_dependency_review_findings_ignored_and_status_recorded(self):
+        from pipelineshield.models import DependencyReviewScannerConfig, ScannersConfig
+        config = PolicyConfig(
+            scanners=ScannersConfig(
+                dependency_review=DependencyReviewScannerConfig(enabled=False)
+            )
+        )
+        engine = PolicyEngine(config)
+        finding = make_finding(Severity.CRITICAL, scanner=ScannerType.DEPENDENCY_REVIEW)
+        result = engine.evaluate([finding])
+        assert result.decision == GateDecision.PASS
+        assert result.scanner_status["dependency_review"] == "disabled"
+        assert any("dependency_review' is disabled" in r.lower() for r in result.reasons)
+
+    def test_all_scanners_disabled_produces_pass_with_disabled_statuses(self):
+        from pipelineshield.models import (
+            DependencyReviewScannerConfig,
+            ScannersConfig,
+            SemgrepScannerConfig,
+            TrivyScannerConfig,
+        )
+        config = PolicyConfig(
+            scanners=ScannersConfig(
+                trivy=TrivyScannerConfig(enabled=False),
+                semgrep=SemgrepScannerConfig(enabled=False),
+                dependency_review=DependencyReviewScannerConfig(enabled=False),
+            )
+        )
+        engine = PolicyEngine(config)
+        result = engine.evaluate([])
+        assert result.decision == GateDecision.PASS
+        assert result.scanner_status == {
+            "trivy": "disabled",
+            "semgrep": "disabled",
+            "dependency_review": "disabled",
+        }
+        disabled_reasons = [r for r in result.reasons if "disabled" in r]
+        assert len(disabled_reasons) == 3
+
+    def test_enabled_scanners_distinguished_from_zero_findings(self):
+        from pipelineshield.models import (
+            DependencyReviewScannerConfig,
+            ScannersConfig,
+            SemgrepScannerConfig,
+            TrivyScannerConfig,
+        )
+        config = PolicyConfig(
+            scanners=ScannersConfig(
+                trivy=TrivyScannerConfig(enabled=True),
+                semgrep=SemgrepScannerConfig(enabled=True),
+                dependency_review=DependencyReviewScannerConfig(enabled=False),
+            )
+        )
+        engine = PolicyEngine(config)
+        # Clean run with zero findings
+        result = engine.evaluate([])
+        assert result.decision == GateDecision.PASS
+        assert result.summary.total_findings == 0
+        assert result.scanner_status["trivy"] == "enabled"
+        assert result.scanner_status["semgrep"] == "enabled"
+        assert result.scanner_status["dependency_review"] == "disabled"
+
 
     def test_trivy_ignore_unfixed_skips_unfixed_vulns(self):
         from pipelineshield.models import ScannersConfig, TrivyScannerConfig

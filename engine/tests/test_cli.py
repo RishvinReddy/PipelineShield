@@ -425,3 +425,49 @@ class TestMultiScannerCLI:
         ])
         assert code == 1
 
+    def test_trivy_blocking_misconfiguration_exits_1(self, tmp_path):
+        policy_path = write_policy(tmp_path, 'version: "1.0"')
+        code = main([
+            "--policy", str(policy_path),
+            "--trivy", str(FIXTURES / "trivy_blocking_misconfig.json"),
+            "--output", str(tmp_path / "out.json"),
+        ])
+        assert code == 1
+
+    def test_trivy_clean_misconfiguration_exits_0(self, tmp_path):
+        policy_path = write_policy(tmp_path, 'version: "1.0"')
+        code = main([
+            "--policy", str(policy_path),
+            "--trivy", str(FIXTURES / "trivy_clean_misconfig.json"),
+            "--output", str(tmp_path / "out.json"),
+        ])
+        assert code == 0
+
+    def test_trivy_exposed_secret_exits_1(self, tmp_path):
+        policy_path = write_policy(tmp_path, 'version: "1.0"')
+        code = main([
+            "--policy", str(policy_path),
+            "--trivy", str(FIXTURES / "trivy_exposed_secret.json"),
+            "--output", str(tmp_path / "out.json"),
+        ])
+        assert code == 1
+
+    def test_trivy_clean_secrets_exits_0(self, tmp_path):
+        policy_path = write_policy(tmp_path, 'version: "1.0"')
+        code = main([
+            "--policy", str(policy_path),
+            "--trivy", str(FIXTURES / "trivy_clean_secrets.json"),
+            "--output", str(tmp_path / "out.json"),
+        ])
+        assert code == 0
+
+    def test_trivy_mixed_scan_blocks(self, tmp_path):
+        policy_path = write_policy(tmp_path, 'version: "1.0"')
+        code = main([
+            "--policy", str(policy_path),
+            "--trivy", str(FIXTURES / "trivy_mixed_results.json"),
+            "--output", str(tmp_path / "out.json"),
+        ])
+        assert code == 1
+
+
