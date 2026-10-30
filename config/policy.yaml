@@ -55,4 +55,6 @@ exemptions:
   findings: []
   paths:
     - "tests/**"
+    - "engine/tests/**"
+    - "scripts/**"
     - "examples/**"
