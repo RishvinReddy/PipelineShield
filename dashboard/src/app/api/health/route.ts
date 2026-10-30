@@ -5,6 +5,8 @@ export async function GET() {
     {
       status: "healthy",
       service: "pipelineshield-dashboard",
+      type: "frontend_endpoint_liveness",
+      description: "Dashboard frontend endpoint check only; does not monitor CI scanners or live pipeline state.",
       version: "0.1.0",
       timestamp: new Date().toISOString(),
     },

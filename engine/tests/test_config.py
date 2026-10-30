@@ -253,7 +253,52 @@ class TestValidConfigurations:
             scanners:
               trivy:
                 enabled: true
+                fail_on_cve_severity:
+                  - CRITICAL
+                  - HIGH
+                scan_types:
+                  - vuln
+                ignore_unfixed: true
+              semgrep:
+                enabled: true
+                rulesets:
+                  - p/security-audit
+                fail_on_severity:
+                  - ERROR
+              dependency_review:
+                enabled: true
+                fail_on_severity:
+                  - critical
+                allow_licenses:
+                  - MIT
+                  - Apache-2.0
+                deny_licenses:
+                  - GPL-3.0
         """)
         policy = load_policy(path)
         assert "trivy" in policy.scanners
-        assert policy.scanners["trivy"].enabled is True
+        assert policy.scanners.trivy.enabled is True
+        assert policy.scanners.trivy.ignore_unfixed is True
+        assert policy.scanners.semgrep.rulesets == ["p/security-audit"]
+        assert policy.scanners.dependency_review.deny_licenses == ["GPL-3.0"]
+
+    def test_unknown_scanner_name_rejected(self, write_yaml):
+        path = write_yaml("""
+            version: "1.0"
+            scanners:
+              snyk:
+                enabled: true
+        """)
+        with pytest.raises(ValueError, match="Unknown configuration keys in 'scanners'"):
+            load_policy(path)
+
+    def test_unknown_scanner_option_rejected(self, write_yaml):
+        path = write_yaml("""
+            version: "1.0"
+            scanners:
+              trivy:
+                enabled: true
+                unsupported_extra_option: 42
+        """)
+        with pytest.raises(ValueError, match="Invalid scanner configuration"):
+            load_policy(path)

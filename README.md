@@ -3,45 +3,45 @@
 [![CI Security Gate](https://github.com/RishvinReddy/PipelineShield/actions/workflows/security-gate.yml/badge.svg)](https://github.com/RishvinReddy/PipelineShield/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python: 3.11+](https://img.shields.io/badge/Python-3.11%2B-blue.svg)](engine/)
-[![Next.js: 15](https://img.shields.io/badge/Next.js-App%20Router-black.svg)](dashboard/)
+[![Next.js: 16](https://img.shields.io/badge/Next.js-App%20Router-black.svg)](dashboard/)
 
-**PipelineShield** is an automated DevSecOps security gatekeeper designed to embed security directly into GitHub CI/CD pipelines. It scans codebases and dependencies, normalizes findings across multiple industry-standard security scanners, evaluates configurable security policies, and blocks unsafe pull requests before they reach production.
+**PipelineShield** is an automated DevSecOps security gatekeeper designed to embed security enforcement directly into GitHub CI/CD pipelines. It scans codebases and dependencies, normalizes findings across multiple security scanners (Trivy, Semgrep, and GitHub Dependency Review), evaluates declarative security policies, and blocks unsafe pull requests before they reach production.
 
 ---
 
-## 🌟 Key Features
+## 🌟 Capabilities & Status
 
-- **Multi-Scanner Security Gate**: Integrates **Trivy** (vulnerability & misconfiguration scanning), **Semgrep CE** (static application security testing / SAST), and **GitHub Dependency Review**.
-- **Declarative Policy Engine**: Python-based policy engine driven by YAML rules with Pydantic validation to enforce customizable security thresholds (BLOCK, WARN, PASS).
-- **Automated CI/CD Enforcement**: Runs in GitHub Actions on every Pull Request and merge, providing immediate feedback via PR checks and formatted security summaries.
-- **Unified Security Dashboard**: Next.js App Router frontend deployed on Vercel to inspect security posture, view normalized scan reports, and track policy violations.
-- **Zero Cost Architecture**: Built purely on open-source scanners, GitHub Actions, and Vercel Hobby tier—no paid APIs, external servers, or proprietary services required.
+- **Multi-Scanner Policy Enforcement**: Native parsers for **Trivy** (CVEs & misconfigurations), **Semgrep CE** (SAST & secret detection), and **GitHub Dependency Review** (PR dependency diffs and licenses).
+- **Declarative Policy Engine**: Typed, schema-validated policy engine driven by [`config/policy.yaml`](config/policy.yaml) with Pydantic validation enforcing customizable severity thresholds (`BLOCK`, `WARN`, `PASS`) and license allow/deny lists.
+- **Fail-Closed CI/CD Gate**: Enforces fail-closed execution in GitHub Actions: scanner crashes, installation failures, missing output files, and malformed JSON fail the CI job immediately.
+- **Unified Security Dashboard**: Next.js App Router interface to inspect security posture and upload evaluation artifacts (`reports/security-summary.json`). *Note: Includes synthetic demonstration reports; external live telemetry streaming is not implemented.*
+- **Zero-Cost Architecture**: Built on open-source scanners, GitHub Actions, and static/serverless hosting—no external databases, paid cloud servers, or commercial API keys required.
 
 ---
 
 ## 🏗️ Architecture
 
-```
+```text
 Developer Pull Request
          │
          ▼
-GitHub Actions CI/CD
+GitHub Actions CI/CD (Least Privilege: contents: read)
   ├── 1. Trivy Scanner (Filesystem & Dependency CVEs)
   ├── 2. Semgrep SAST (Insecure Code Patterns & Secrets)
-  └── 3. Dependency Review (New Dependencies & Licenses)
+  └── 3. GitHub Dependency Review (PR Dependency Diffs & Licenses)
          │
          ▼
-Python Security Policy Engine
-  ├── Normalizes findings into unified schema
-  ├── Evaluates policy against config/policy.yaml
-  └── Outputs Decision: PASS | WARN | BLOCK | ERROR
+Python Security Policy Engine (Fail-Closed)
+  ├── Normalizes heterogeneous outputs into unified Finding models
+  ├── Enforces typed scanner settings, severity thresholds & license rules
+  └── Outputs Decision: PASS (0) | WARN (0) | BLOCK (1) | ERROR (2)
          │
-         ├───► Blocks Unsafe PRs (Non-zero exit code on BLOCK)
+         ├───► Gate Verdict (Blocks Pull Request on BLOCK)
          └───► Produces JSON & Markdown Security Artifacts
                     │
                     ▼
-          Next.js Security Dashboard (Vercel)
-          Unified visualization of pipeline health & findings
+          Next.js Security Dashboard
+          Interactive visualization of evaluation artifacts
 ```
 
 ---
@@ -51,115 +51,160 @@ Python Security Policy Engine
 ```text
 PipelineShield/
 ├── .github/
-│   └── workflows/          # GitHub Actions CI/CD workflows
+│   └── workflows/
+│       └── security-gate.yml # CI workflow (fail-closed, pinned commit SHAs)
 ├── config/
-│   └── policy.yaml         # Declarative DevSecOps security policies
+│   └── policy.yaml         # Declarative DevSecOps security policy
 ├── engine/                 # Python Security Policy Engine
-│   ├── pyproject.toml      # Engine dependency and packaging metadata
-│   ├── src/
-│   │   └── pipelineshield/ # Engine source code
-│   │       ├── models.py        # Pydantic data schemas
-│   │       ├── config.py        # Policy loader & validator
-│   │       ├── normalizer.py    # Scanner output normalizer
-│   │       ├── policy_engine.py # Rule evaluation logic
-│   │       ├── reporter.py      # Output & summary generator
-│   │       └── cli.py           # Command-line interface
-│   └── tests/              # Engine pytest suite
+│   ├── pyproject.toml      # Packaging & test dependencies
+│   ├── src/pipelineshield/ # Source package
+│   │   ├── models.py        # Pydantic schemas (typed scanner configs)
+│   │   ├── config.py        # Strict policy YAML loader
+│   │   ├── normalizer.py    # Native parsers (Trivy, Semgrep, Dep Review)
+│   │   ├── policy_engine.py # Gate evaluation & license enforcement
+│   │   ├── reporter.py      # JSON & Markdown report generators
+│   │   └── cli.py           # CLI with exit codes 0 / 1 / 2
+│   └── tests/              # 216 pytest unit & integration tests
 ├── dashboard/              # Next.js App Router web dashboard
-│   ├── src/                # Frontend application source
-│   ├── package.json        # Frontend dependencies
-│   └── tailwind.config.ts  # Tailwind CSS styling
+│   ├── src/app/            # App Router pages and health route
+│   ├── vercel.json         # Vercel deployment configuration
+│   └── package.json        # Frontend dependencies
 ├── examples/               # Example vulnerable & clean scan reports
-├── reports/                # Local scan output storage (gitignored)
-├── docs/                   # Engineering & architecture documentation
+├── docs/                   # Technical documentation
 │   ├── architecture.md     # System design & data flow
-│   ├── testing.md          # Test strategy & instructions
-│   └── threat-model.md     # CI/CD security threat model
-├── .gitignore              # Repository ignore rules
+│   ├── testing.md          # Test strategy & local reproduction commands
+│   └── threat-model.md     # CI/CD security threat model & least privilege
 ├── LICENSE                 # MIT License
 ├── README.md               # Project documentation
-└── PROJECT_PLAN.md         # Phased implementation roadmap
+└── PROJECT_PLAN.md         # Phased implementation roadmap & progress
 ```
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Running Scanners & Engine Locally
 
 ### Prerequisites
 
 - **Python**: 3.11+
 - **Node.js**: 20+ & npm 10+
-- **Git**
+- **Trivy**: `brew install trivy` or official binary
+- **Semgrep**: `pip install semgrep`
 
-### 1. Python Policy Engine Setup
+### 1. Execute Security Scanners
 
 ```bash
-cd engine
+mkdir -p reports
 
-# Create and activate virtual environment
-python3 -m venv .venv
-source .venv/bin/activate
+# Run Trivy vulnerability scan
+trivy fs --exit-code 0 --format json --output reports/trivy.json .
 
-# Install package in editable mode with test dependencies
-pip install -e ".[test]"
-
-# Run tests
-pytest
+# Run Semgrep SAST scan
+semgrep scan --config "p/security-audit" --config "p/secrets" --config "p/owasp-top-ten" --json --output reports/semgrep.json
 ```
 
-### 2. Next.js Dashboard Setup
+### 2. Run the Policy Engine
 
 ```bash
-cd dashboard
+# Setup Python virtual environment
+cd engine
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[test]"
 
-# Install dependencies
+# Run policy evaluation with generated scanner outputs
+python3 -m pipelineshield.cli \
+  --policy ../config/policy.yaml \
+  --trivy ../reports/trivy.json \
+  --semgrep ../reports/semgrep.json \
+  --output ../reports/security-summary.json \
+  --summary-md ../reports/summary.md
+```
+
+### 3. Run the Next.js Dashboard
+
+```bash
+cd ../dashboard
 npm install
-
-# Start local development server
 npm run dev
 ```
 
-Visit [http://localhost:3000](http://localhost:3000) to view the PipelineShield dashboard.
+Open [http://localhost:3000](http://localhost:3000) to inspect demonstration reports or click **"Load Report JSON"** to upload `reports/security-summary.json`.
 
 ---
 
 ## 🔒 Security Policy Configuration
 
-Security rules are defined declaratively in [`config/policy.yaml`](config/policy.yaml):
+Policies are configured declaratively in [`config/policy.yaml`](config/policy.yaml):
 
 ```yaml
 version: "1.0"
 enforcement:
-  mode: strict # Options: strict, permissive, monitor
+  mode: "strict"      # strict (fails on BLOCK), permissive (warns), monitor (reports only)
+  fail_on_block: true
+  fail_on_warn: false
+
 thresholds:
-  critical: BLOCK
-  high: BLOCK
-  medium: WARN
-  low: PASS
+  critical: "BLOCK"
+  high: "BLOCK"
+  medium: "WARN"
+  low: "PASS"
+  info: "PASS"
+
 scanners:
   trivy:
     enabled: true
+    fail_on_cve_severity: ["CRITICAL", "HIGH"]
+    scan_types: ["vuln", "config", "secret"]
+    ignore_unfixed: false
+
   semgrep:
     enabled: true
+    rulesets:
+      - "p/security-audit"
+      - "p/secrets"
+      - "p/owasp-top-ten"
+    fail_on_severity: ["ERROR"]
+
   dependency_review:
     enabled: true
+    allow_licenses:
+      - "MIT"
+      - "Apache-2.0"
+      - "BSD-2-Clause"
+      - "BSD-3-Clause"
+      - "ISC"
+      - "0BSD"
+    deny_licenses:
+      - "GPL-3.0"
+      - "AGPL-3.0"
+    deny_severities:
+      - "critical"
+      - "high"
 ```
 
 ---
 
-## 🗺️ Roadmap & Phases
+## 🗺️ Implementation Roadmap & Status
 
 - [x] **Phase 1**: Repository and Development Environment Scaffold
 - [x] **Phase 2**: Python Security Policy Engine Implementation
-- [x] **Phase 3**: Automated Policy Engine Testing Suite (206 tests, 93% coverage)
-- [x] **Phase 4**: Trivy, Semgrep, and GitHub Actions Security Gate Integration
-- [x] **Phase 5**: Next.js Security Dashboard Interface
-- [x] **Phase 6**: Vercel Deployment Setup
-- [x] **Phase 7**: Security Hardening & CI Least Privilege
-- [x] **Phase 8**: End-to-End Vulnerability Demonstration
-- [x] **Phase 9**: Final Production Documentation & Release
+- [x] **Phase 3**: Automated Policy Engine Testing Suite (216 tests, 92% coverage)
+- [x] **Phase 4**: Trivy, Semgrep, and Dependency Review CI Integration (Fail-closed)
+- [x] **Phase 5**: Next.js Security Dashboard Interface & Artifact Uploader
+- [ ] **Phase 6**: Vercel Live Deployment (Configuration present; deployment pending)
+- [x] **Phase 7**: Security Hardening, Commit-SHA Pinning & CI Least Privilege
+- [ ] **Phase 8**: End-to-End Pull Request Adversarial Demonstration
+- [ ] **Phase 9**: Final Release Sign-Off
 
-See [PROJECT_PLAN.md](PROJECT_PLAN.md) for full phase details and deliverables.
+See [PROJECT_PLAN.md](PROJECT_PLAN.md) for detailed phase criteria.
+
+---
+
+## ⚠️ Current Limitations
+
+1. **Dependency Review Execution Scope**: GitHub's Dependency Review Action executes exclusively on Pull Requests (`github.event_name == 'pull_request'`), because it requires a git diff between base and head branches. On push/dispatch runs, Trivy and Semgrep run unconditionally while Dependency Review is safely skipped.
+2. **Dashboard Data**: The dashboard runs client-side without an external database. It visualizes either synthetic demonstration reports or user-uploaded `EvaluationResult` JSON files generated by CI.
+3. **Vercel Deployment**: `dashboard/vercel.json` provides deployment configuration; live public domain hosting is planned in a subsequent phase.
 
 ---
 

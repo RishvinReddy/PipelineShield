@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class Severity(str, Enum):
@@ -78,6 +78,7 @@ class Finding(BaseModel):
     installed_version: Optional[str] = Field(default=None, description="Currently installed package version")
     fixed_version: Optional[str] = Field(default=None, description="Minimum safe package version if available")
     cwe_ids: List[str] = Field(default_factory=list, description="Associated CWE identifiers (e.g. CWE-89)")
+    license: Optional[str] = Field(default=None, description="Software license identifier (e.g. MIT, GPL-3.0)")
     remediation: Optional[str] = Field(default=None, description="Suggested action to resolve this finding")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Raw scanner-specific metadata (read-only)")
 
@@ -102,6 +103,8 @@ class PolicyThresholds(BaseModel):
     Each severity maps to a GateDecision (BLOCK, WARN, or PASS).
     ERR is not a valid threshold value — it is reserved for engine failures.
     """
+    model_config = ConfigDict(extra="forbid")
+
     critical: GateDecision = GateDecision.BLOCK
     high: GateDecision = GateDecision.BLOCK
     medium: GateDecision = GateDecision.WARN
@@ -121,9 +124,149 @@ class PolicyThresholds(BaseModel):
 
 
 class ScannerConfig(BaseModel):
-    """Scanner-specific enablement and configuration."""
+    """Base scanner configuration."""
+    model_config = ConfigDict(extra="forbid")
     enabled: bool = True
-    options: Dict[str, Any] = Field(default_factory=dict)
+
+
+class TrivyScannerConfig(ScannerConfig):
+    """Typed configuration options for Trivy vulnerability scanner."""
+    fail_on_cve_severity: List[Severity] = Field(
+        default_factory=lambda: [Severity.CRITICAL, Severity.HIGH]
+    )
+    scan_types: List[str] = Field(
+        default_factory=lambda: ["vuln", "config", "secret"]
+    )
+    ignore_unfixed: bool = False
+
+    @field_validator("fail_on_cve_severity", mode="before")
+    @classmethod
+    def validate_trivy_severities(cls, v: Any) -> Any:
+        if v is None:
+            return []
+        if isinstance(v, list):
+            res = []
+            for item in v:
+                if isinstance(item, Severity):
+                    res.append(item)
+                else:
+                    try:
+                        res.append(Severity(str(item).strip().upper()))
+                    except ValueError:
+                        raise ValueError(f"Trivy: unrecognized severity '{item}' in fail_on_cve_severity")
+            return res
+        raise ValueError("fail_on_cve_severity must be a list")
+
+    @field_validator("scan_types")
+    @classmethod
+    def validate_scan_types(cls, v: List[str]) -> List[str]:
+        valid_types = {"vuln", "config", "secret", "license"}
+        for item in v:
+            if item not in valid_types:
+                raise ValueError(
+                    f"Trivy: unsupported scan_type '{item}'. Expected one of: {sorted(valid_types)}"
+                )
+        return v
+
+
+class SemgrepScannerConfig(ScannerConfig):
+    """Typed configuration options for Semgrep SAST scanner."""
+    rulesets: List[str] = Field(
+        default_factory=lambda: ["p/security-audit", "p/secrets", "p/owasp-top-ten"]
+    )
+    fail_on_severity: List[Severity] = Field(
+        default_factory=lambda: [Severity.CRITICAL, Severity.HIGH]
+    )
+
+    @field_validator("fail_on_severity", mode="before")
+    @classmethod
+    def validate_semgrep_severities(cls, v: Any) -> Any:
+        if v is None:
+            return []
+        mapping = {
+            "ERROR": Severity.HIGH,
+            "WARNING": Severity.MEDIUM,
+            "INFO": Severity.INFO,
+            "CRITICAL": Severity.CRITICAL,
+            "HIGH": Severity.HIGH,
+            "MEDIUM": Severity.MEDIUM,
+            "LOW": Severity.LOW,
+        }
+        if isinstance(v, list):
+            res = []
+            for item in v:
+                if isinstance(item, Severity):
+                    res.append(item)
+                else:
+                    norm = str(item).strip().upper()
+                    if norm in mapping:
+                        res.append(mapping[norm])
+                    else:
+                        raise ValueError(f"Semgrep: unrecognized severity '{item}' in fail_on_severity")
+            return res
+        raise ValueError("fail_on_severity must be a list")
+
+
+class DependencyReviewScannerConfig(ScannerConfig):
+    """Typed configuration options for GitHub Dependency Review scanner."""
+    allow_licenses: List[str] = Field(default_factory=list)
+    deny_licenses: List[str] = Field(default_factory=list)
+    deny_severities: List[Severity] = Field(
+        default_factory=lambda: [Severity.CRITICAL, Severity.HIGH]
+    )
+    fail_on_severity: Optional[List[Severity]] = None
+
+    @field_validator("deny_severities", "fail_on_severity", mode="before")
+    @classmethod
+    def validate_dep_severities(cls, v: Any) -> Any:
+        if v is None:
+            return None
+        mapping = {
+            "critical": Severity.CRITICAL,
+            "high": Severity.HIGH,
+            "moderate": Severity.MEDIUM,
+            "medium": Severity.MEDIUM,
+            "low": Severity.LOW,
+            "CRITICAL": Severity.CRITICAL,
+            "HIGH": Severity.HIGH,
+            "MEDIUM": Severity.MEDIUM,
+            "LOW": Severity.LOW,
+        }
+        if isinstance(v, list):
+            res = []
+            for item in v:
+                if isinstance(item, Severity):
+                    res.append(item)
+                else:
+                    norm = str(item).strip().lower()
+                    if norm in mapping:
+                        res.append(mapping[norm])
+                    else:
+                        raise ValueError(f"Dependency Review: unrecognized severity '{item}' in deny_severities")
+            return res
+        raise ValueError("deny_severities must be a list")
+
+
+class ScannersConfig(BaseModel):
+    """Typed scanner configuration container."""
+    model_config = ConfigDict(extra="forbid")
+
+    trivy: TrivyScannerConfig = Field(default_factory=TrivyScannerConfig)
+    semgrep: SemgrepScannerConfig = Field(default_factory=SemgrepScannerConfig)
+    dependency_review: DependencyReviewScannerConfig = Field(
+        default_factory=DependencyReviewScannerConfig
+    )
+
+    def __getitem__(self, item: str) -> Any:
+        if hasattr(self, item):
+            return getattr(self, item)
+        raise KeyError(f"Unknown scanner '{item}'. Supported: trivy, semgrep, dependency_review")
+
+    def __contains__(self, item: object) -> bool:
+        return isinstance(item, str) and hasattr(self, item) and not item.startswith("_")
+
+    def get(self, item: str, default: Any = None) -> Any:
+        return getattr(self, item, default)
 
 
 class PolicyExemptions(BaseModel):
@@ -131,6 +274,8 @@ class PolicyExemptions(BaseModel):
 
     Exempted findings are still recorded in reports — they are never silently dropped.
     """
+    model_config = ConfigDict(extra="forbid")
+
     findings: List[str] = Field(default_factory=list, description="Exact finding IDs to exempt")
     paths: List[str] = Field(default_factory=list, description="Glob patterns for exempt file paths")
 
@@ -150,12 +295,15 @@ class PolicyConfig(BaseModel):
     Loaded from config/policy.yaml and validated before use.
     Invalid configurations raise ValueError — they never silently default to unsafe states.
     """
+    model_config = ConfigDict(extra="forbid")
+
     version: str = Field(default="1.0")
+    metadata: Dict[str, Any] = Field(default_factory=dict)
     mode: EnforcementMode = Field(default=EnforcementMode.STRICT)
     fail_on_block: bool = Field(default=True)
     fail_on_warn: bool = Field(default=False)
     thresholds: PolicyThresholds = Field(default_factory=PolicyThresholds)
-    scanners: Dict[str, ScannerConfig] = Field(default_factory=dict)
+    scanners: ScannersConfig = Field(default_factory=ScannersConfig)
     exemptions: PolicyExemptions = Field(default_factory=PolicyExemptions)
 
     @field_validator("mode", mode="before")

@@ -296,6 +296,49 @@ class TestDepReviewNormalizer:
         findings = Normalizer.from_dependency_review(data)
         assert len(findings) == 2
 
+    def test_github_dependency_review_action_format(self):
+        data = [
+            {
+                "change_type": "added",
+                "manifest": "package.json",
+                "name": "example-pkg",
+                "version": "1.0.0",
+                "license": "MIT",
+                "vulnerabilities": [
+                    {
+                        "severity": "critical",
+                        "advisory_ghsa_id": "GHSA-abcd-1234",
+                        "advisory_summary": "Critical vuln in example-pkg",
+                        "safe_version": "1.0.1",
+                    }
+                ]
+            }
+        ]
+        findings = normalize_dependency_review_json(data)
+        assert len(findings) == 1
+        assert findings[0].id == "GHSA-abcd-1234"
+        assert findings[0].severity == Severity.CRITICAL
+        assert findings[0].package_name == "example-pkg"
+        assert findings[0].license == "MIT"
+        assert findings[0].fixed_version == "1.0.1"
+
+    def test_github_dependency_review_action_format_license_only(self):
+        data = [
+            {
+                "change_type": "added",
+                "manifest": "package.json",
+                "name": "gpl-pkg",
+                "version": "2.0.0",
+                "license": "GPL-3.0",
+                "vulnerabilities": []
+            }
+        ]
+        findings = normalize_dependency_review_json(data)
+        assert len(findings) == 1
+        assert findings[0].id == "LIC-gpl-pkg"
+        assert findings[0].license == "GPL-3.0"
+        assert findings[0].package_name == "gpl-pkg"
+
 
 # ---------------------------------------------------------------------------
 # Generic normalize_finding_dict

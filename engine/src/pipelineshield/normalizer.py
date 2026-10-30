@@ -383,14 +383,77 @@ def normalize_dependency_review_json(data: Any) -> List[Finding]:
             )
         ctx = f"Dependency Review item[{idx}]"
 
-        advisory_id = _safe_str(item.get("advisory_id"), "advisory_id", ctx)
-        pkg_name = _safe_str(item.get("package_name"), "package_name", ctx)
+        # Support GitHub Action dependency-changes format with nested vulnerabilities
+        vulns = item.get("vulnerabilities")
+        if vulns is not None and isinstance(vulns, list):
+            pkg_name = _safe_str(item.get("name") or item.get("package_name"), "name", ctx)
+            installed_ver = item.get("version") or None
+            lic = item.get("license") or None
+            manifest = item.get("manifest") or None
+
+            if vulns:
+                for v_idx, vuln in enumerate(vulns):
+                    v_ctx = f"{ctx}.vulnerabilities[{v_idx}]"
+                    advisory_id = _safe_str(
+                        vuln.get("advisory_ghsa_id") or vuln.get("advisory_id") or vuln.get("id"),
+                        "advisory_ghsa_id",
+                        v_ctx,
+                    )
+                    raw_severity = _safe_str(vuln.get("severity"), "severity", v_ctx)
+                    severity = _map_dep_review_severity(raw_severity)
+                    summary = vuln.get("advisory_summary") or vuln.get("summary") or advisory_id
+                    fixed_ver = vuln.get("safe_version") or vuln.get("fixed_at") or None
+                    advisory_url = vuln.get("advisory_url") or None
+
+                    remediation: str | None = None
+                    if fixed_ver:
+                        remediation = f"Upgrade {pkg_name} to version {fixed_ver} or later."
+
+                    findings.append(
+                        Finding(
+                            id=advisory_id,
+                            scanner=ScannerType.DEPENDENCY_REVIEW,
+                            title=str(summary),
+                            description=str(summary),
+                            severity=severity,
+                            file_path=str(manifest) if manifest else None,
+                            package_name=pkg_name,
+                            installed_version=str(installed_ver) if installed_ver else None,
+                            fixed_version=str(fixed_ver) if fixed_ver else None,
+                            license=str(lic) if lic else None,
+                            remediation=remediation,
+                            metadata={"advisory_url": advisory_url},
+                        )
+                    )
+            elif lic:
+                # Dependency changed with license to audit (even without CVE)
+                findings.append(
+                    Finding(
+                        id=f"LIC-{pkg_name}",
+                        scanner=ScannerType.DEPENDENCY_REVIEW,
+                        title=f"License audit for {pkg_name}: {lic}",
+                        description=f"Package {pkg_name} license declared as {lic}",
+                        severity=Severity.INFO,
+                        file_path=str(manifest) if manifest else None,
+                        package_name=pkg_name,
+                        installed_version=str(installed_ver) if installed_ver else None,
+                        license=str(lic),
+                        remediation=None,
+                        metadata={"ecosystem": item.get("ecosystem")},
+                    )
+                )
+            continue
+
+        # Standard flat format
+        advisory_id = _safe_str(item.get("advisory_id") or item.get("id"), "advisory_id", ctx)
+        pkg_name = _safe_str(item.get("package_name") or item.get("name"), "package_name", ctx)
         raw_severity = _safe_str(item.get("severity"), "severity", ctx)
         severity = _map_dep_review_severity(raw_severity)
 
         summary = item.get("summary") or advisory_id
         installed_ver = item.get("version") or None
         fixed_ver = item.get("fixed_at") or None
+        lic = item.get("license") or None
 
         remediation: str | None = None
         if fixed_ver:
@@ -407,6 +470,7 @@ def normalize_dependency_review_json(data: Any) -> List[Finding]:
                 package_name=pkg_name,
                 installed_version=str(installed_ver) if installed_ver else None,
                 fixed_version=str(fixed_ver) if fixed_ver else None,
+                license=str(lic) if lic else None,
                 remediation=remediation,
                 metadata={
                     "advisory_url": advisory_url,
@@ -502,6 +566,7 @@ def normalize_finding_dict(raw: Dict[str, Any]) -> Finding:
         installed_version=raw.get("installed_version") or None,
         fixed_version=raw.get("fixed_version") or None,
         cwe_ids=list(raw.get("cwe_ids") or []),
+        license=raw.get("license") or None,
         remediation=raw.get("remediation") or None,
         metadata=dict(raw.get("metadata") or {}),
     )

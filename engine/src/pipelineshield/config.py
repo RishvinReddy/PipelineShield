@@ -18,6 +18,7 @@ from pipelineshield.models import (
     PolicyExemptions,
     PolicyThresholds,
     ScannerConfig,
+    ScannersConfig,
 )
 
 # Valid top-level YAML keys — unknown keys are rejected to prevent misconfiguration
@@ -116,13 +117,17 @@ def load_policy(path: Union[str, Path]) -> PolicyConfig:
     if not isinstance(raw_scanners, dict):
         raise TypeError("'scanners' must be a YAML mapping.")
 
-    parsed_scanners: dict = {}
-    for scanner_name, scanner_cfg in raw_scanners.items():
-        if scanner_cfg is None:
-            scanner_cfg = {}
-        if not isinstance(scanner_cfg, dict):
-            raise TypeError(f"'scanners.{scanner_name}' must be a YAML mapping.")
-        parsed_scanners[scanner_name] = ScannerConfig.model_validate(scanner_cfg)
+    _KNOWN_SCANNERS = frozenset({"trivy", "semgrep", "dependency_review"})
+    _reject_unknown_keys(raw_scanners, _KNOWN_SCANNERS, "scanners")
+
+    for s_name, s_val in raw_scanners.items():
+        if s_val is not None and not isinstance(s_val, dict):
+            raise TypeError(f"'scanners.{s_name}' must be a YAML mapping.")
+
+    try:
+        scanners_obj = ScannersConfig.model_validate(raw_scanners)
+    except ValidationError as e:
+        raise ValueError(f"Invalid scanner configuration: {e}") from e
 
     # --- exemptions ---
     raw_exemptions = data.get("exemptions", {})
@@ -144,11 +149,12 @@ def load_policy(path: Union[str, Path]) -> PolicyConfig:
     try:
         return PolicyConfig(
             version=str(data.get("version", "1.0")),
+            metadata=dict(data.get("metadata") or {}),
             mode=raw_mode,
             fail_on_block=fail_on_block,
             fail_on_warn=fail_on_warn,
             thresholds=thresholds_obj,
-            scanners=parsed_scanners,
+            scanners=scanners_obj,
             exemptions=exemptions_obj,
         )
     except (ValidationError, ValueError) as e:

@@ -410,3 +410,133 @@ class TestMultipleFindings:
         ]
         result = engine.evaluate(findings)
         assert len(result.findings) == 2
+
+
+# ---------------------------------------------------------------------------
+# Scanner-specific policy features
+# ---------------------------------------------------------------------------
+
+class TestScannerSpecificPolicy:
+    def test_disabled_scanner_findings_are_ignored(self):
+        from pipelineshield.models import ScannersConfig, TrivyScannerConfig
+        config = PolicyConfig(
+            scanners=ScannersConfig(
+                trivy=TrivyScannerConfig(enabled=False)
+            )
+        )
+        engine = PolicyEngine(config)
+        finding = make_finding(Severity.CRITICAL, scanner=ScannerType.TRIVY)
+        result = engine.evaluate([finding])
+        assert result.decision == GateDecision.PASS
+        assert len(result.blocking_findings) == 0
+
+    def test_trivy_ignore_unfixed_skips_unfixed_vulns(self):
+        from pipelineshield.models import ScannersConfig, TrivyScannerConfig
+        config = PolicyConfig(
+            scanners=ScannersConfig(
+                trivy=TrivyScannerConfig(enabled=True, ignore_unfixed=True)
+            )
+        )
+        engine = PolicyEngine(config)
+        # Unfixed finding (fixed_version=None)
+        finding = Finding(
+            id="CVE-2024-UNFIXED",
+            title="Unfixed vuln",
+            severity=Severity.HIGH,
+            scanner=ScannerType.TRIVY,
+            package_name="test-pkg",
+            fixed_version=None,
+        )
+        result = engine.evaluate([finding])
+        assert result.decision == GateDecision.PASS
+        assert len(result.blocking_findings) == 0
+
+    def test_trivy_enforces_fixed_vulns_even_with_ignore_unfixed(self):
+        from pipelineshield.models import ScannersConfig, TrivyScannerConfig
+        config = PolicyConfig(
+            scanners=ScannersConfig(
+                trivy=TrivyScannerConfig(enabled=True, ignore_unfixed=True)
+            )
+        )
+        engine = PolicyEngine(config)
+        finding = Finding(
+            id="CVE-2024-FIXED",
+            title="Fixed vuln",
+            severity=Severity.HIGH,
+            scanner=ScannerType.TRIVY,
+            package_name="test-pkg",
+            fixed_version="1.2.3",
+        )
+        result = engine.evaluate([finding])
+        assert result.decision == GateDecision.BLOCK
+        assert len(result.blocking_findings) == 1
+
+
+class TestLicensePolicy:
+    def test_deny_license_blocks(self):
+        from pipelineshield.models import DependencyReviewScannerConfig, ScannersConfig
+        config = PolicyConfig(
+            scanners=ScannersConfig(
+                dependency_review=DependencyReviewScannerConfig(
+                    enabled=True,
+                    deny_licenses=["GPL-3.0", "AGPL-3.0"]
+                )
+            )
+        )
+        engine = PolicyEngine(config)
+        finding = Finding(
+            id="DR-001",
+            title="Dependency license issue",
+            severity=Severity.LOW,
+            scanner=ScannerType.DEPENDENCY_REVIEW,
+            package_name="copyleft-lib",
+            license="GPL-3.0",
+        )
+        result = engine.evaluate([finding])
+        assert result.decision == GateDecision.BLOCK
+        assert any("prohibited license" in r.lower() for r in result.reasons)
+
+    def test_allow_licenses_blocks_unauthorized(self):
+        from pipelineshield.models import DependencyReviewScannerConfig, ScannersConfig
+        config = PolicyConfig(
+            scanners=ScannersConfig(
+                dependency_review=DependencyReviewScannerConfig(
+                    enabled=True,
+                    allow_licenses=["MIT", "Apache-2.0"]
+                )
+            )
+        )
+        engine = PolicyEngine(config)
+        finding = Finding(
+            id="DR-002",
+            title="Unapproved license",
+            severity=Severity.LOW,
+            scanner=ScannerType.DEPENDENCY_REVIEW,
+            package_name="bsd-lib",
+            license="BSD-3-Clause",
+        )
+        result = engine.evaluate([finding])
+        assert result.decision == GateDecision.BLOCK
+        assert any("unapproved license" in r.lower() for r in result.reasons)
+
+    def test_allow_licenses_passes_authorized(self):
+        from pipelineshield.models import DependencyReviewScannerConfig, ScannersConfig
+        config = PolicyConfig(
+            scanners=ScannersConfig(
+                dependency_review=DependencyReviewScannerConfig(
+                    enabled=True,
+                    allow_licenses=["MIT", "Apache-2.0"]
+                )
+            )
+        )
+        engine = PolicyEngine(config)
+        finding = Finding(
+            id="DR-003",
+            title="Approved license",
+            severity=Severity.LOW,
+            scanner=ScannerType.DEPENDENCY_REVIEW,
+            package_name="mit-lib",
+            license="MIT",
+        )
+        result = engine.evaluate([finding])
+        assert result.decision == GateDecision.PASS

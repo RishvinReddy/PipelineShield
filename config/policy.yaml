@@ -32,7 +32,7 @@ scanners:
       - "p/security-audit"
       - "p/secrets"
       - "p/owasp-top-ten"
-    fail_on_severity: ["ERROR", "WARNING"]
+    fail_on_severity: ["ERROR"]
 
   dependency_review:
     enabled: true

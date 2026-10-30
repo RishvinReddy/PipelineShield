@@ -59,10 +59,11 @@ interface EvaluationResult {
 }
 
 // Sample reports for demonstration
-const SAMPLE_REPORTS: Record<string, { label: string; tag: string; data: EvaluationResult }> = {
+const SAMPLE_REPORTS: Record<string, { label: string; tag: string; isDemo: boolean; data: EvaluationResult }> = {
   vulnerable: {
-    label: "Pull Request #42 — Dependency & Code Risks",
+    label: "Demo 1: Vulnerable PR (Mock Data)",
     tag: "BLOCKED (Exit 1)",
+    isDemo: true,
     data: {
       decision: "BLOCK",
       reasons: [
@@ -155,8 +156,9 @@ const SAMPLE_REPORTS: Record<string, { label: string; tag: string; data: Evaluat
     },
   },
   warnings_only: {
-    label: "Pull Request #43 — Advisory Warnings",
+    label: "Demo 3: Advisory Warnings (Mock Data)",
     tag: "WARN (Exit 0)",
+    isDemo: true,
     data: {
       decision: "WARN",
       reasons: [
@@ -210,8 +212,9 @@ const SAMPLE_REPORTS: Record<string, { label: string; tag: string; data: Evaluat
     },
   },
   clean: {
-    label: "Main Branch — Clean Security Baseline",
+    label: "Demo 2: Clean Baseline (Mock Data)",
     tag: "PASSED (Exit 0)",
+    isDemo: true,
     data: {
       decision: "PASS",
       reasons: ["All findings within acceptable policy thresholds"],
@@ -239,9 +242,42 @@ const SAMPLE_REPORTS: Record<string, { label: string; tag: string; data: Evaluat
   },
 };
 
+function validateReportSchema(obj: unknown): { valid: boolean; error?: string } {
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) {
+    return { valid: false, error: "Root must be a valid JSON object." };
+  }
+  const rec = obj as Record<string, unknown>;
+  const validDecisions = ["PASS", "WARN", "BLOCK", "ERROR"];
+  if (typeof rec.decision !== "string" || !validDecisions.includes(rec.decision.toUpperCase())) {
+    return {
+      valid: false,
+      error: `Invalid 'decision' field. Must be one of: ${validDecisions.join(", ")}.`,
+    };
+  }
+  if (!rec.summary || typeof rec.summary !== "object" || Array.isArray(rec.summary)) {
+    return { valid: false, error: "Missing or invalid 'summary' object." };
+  }
+  const summary = rec.summary as Record<string, unknown>;
+  const numericFields = ["total_findings", "critical", "high", "medium", "low", "blocking_count", "warning_count"];
+  for (const field of numericFields) {
+    if (typeof summary[field] !== "number") {
+      return { valid: false, error: `Summary field '${field}' must be a number.` };
+    }
+  }
+  if (rec.blocking_findings && !Array.isArray(rec.blocking_findings)) {
+    return { valid: false, error: "'blocking_findings' must be an array." };
+  }
+  if (rec.warning_findings && !Array.isArray(rec.warning_findings)) {
+    return { valid: false, error: "'warning_findings' must be an array." };
+  }
+  return { valid: true };
+}
+
 export default function Home() {
   const [activeReportKey, setActiveReportKey] = useState<string>("vulnerable");
   const [customReport, setCustomReport] = useState<EvaluationResult | null>(null);
+  const [customFileName, setCustomFileName] = useState<string>("");
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"findings" | "policy" | "architecture">("findings");
   const [severityFilter, setSeverityFilter] = useState<string>("ALL");
   const [scannerFilter, setScannerFilter] = useState<string>("ALL");
@@ -256,13 +292,15 @@ export default function Home() {
     return SAMPLE_REPORTS[activeReportKey]?.data || SAMPLE_REPORTS.vulnerable.data;
   }, [activeReportKey, customReport]);
 
+  const isDemoActive = activeReportKey !== "custom";
+
   // Combine all findings for interactive search and filter
   const allFindings = useMemo(() => {
     const list: (Finding & { gateCategory: "blocking" | "warning" | "advisory" | "exempted" })[] = [];
-    currentResult.blocking_findings.forEach((f) => list.push({ ...f, gateCategory: "blocking" }));
-    currentResult.warning_findings.forEach((f) => list.push({ ...f, gateCategory: "warning" }));
-    currentResult.advisory_findings.forEach((f) => list.push({ ...f, gateCategory: "advisory" }));
-    currentResult.exempted_findings.forEach((f) => list.push({ ...f, gateCategory: "exempted" }));
+    (currentResult.blocking_findings || []).forEach((f) => list.push({ ...f, gateCategory: "blocking" }));
+    (currentResult.warning_findings || []).forEach((f) => list.push({ ...f, gateCategory: "warning" }));
+    (currentResult.advisory_findings || []).forEach((f) => list.push({ ...f, gateCategory: "advisory" }));
+    (currentResult.exempted_findings || []).forEach((f) => list.push({ ...f, gateCategory: "exempted" }));
     return list;
   }, [currentResult]);
 
@@ -273,8 +311,8 @@ export default function Home() {
       if (scannerFilter !== "ALL" && item.scanner !== scannerFilter) return false;
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
-        const matchId = item.id.toLowerCase().includes(q);
-        const matchTitle = item.title.toLowerCase().includes(q);
+        const matchId = (item.id || "").toLowerCase().includes(q);
+        const matchTitle = (item.title || "").toLowerCase().includes(q);
         const matchFile = (item.file_path || "").toLowerCase().includes(q);
         const matchPkg = (item.package_name || "").toLowerCase().includes(q);
         return matchId || matchTitle || matchFile || matchPkg;
@@ -283,22 +321,38 @@ export default function Home() {
     });
   }, [allFindings, severityFilter, scannerFilter, searchQuery]);
 
-  // Handle report upload
+  // Handle report upload with schema validation
   const handleFileUpload = (e: ChangeEvent<HTMLInputElement>) => {
+    setUploadError(null);
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
         const parsed = JSON.parse(event.target?.result as string);
-        if (parsed.decision && parsed.summary) {
-          setCustomReport(parsed);
-          setActiveReportKey("custom");
-        } else {
-          alert("Invalid PipelineShield report JSON: missing 'decision' or 'summary'.");
+        const validation = validateReportSchema(parsed);
+        if (!validation.valid) {
+          setUploadError(`Invalid PipelineShield schema: ${validation.error}`);
+          return;
         }
+
+        const normalized: EvaluationResult = {
+          decision: (parsed.decision || "BLOCK").toUpperCase(),
+          reasons: Array.isArray(parsed.reasons) ? parsed.reasons : [],
+          summary: parsed.summary,
+          blocking_findings: Array.isArray(parsed.blocking_findings) ? parsed.blocking_findings : [],
+          warning_findings: Array.isArray(parsed.warning_findings) ? parsed.warning_findings : [],
+          advisory_findings: Array.isArray(parsed.advisory_findings) ? parsed.advisory_findings : [],
+          exempted_findings: Array.isArray(parsed.exempted_findings) ? parsed.exempted_findings : [],
+          evaluated_at: parsed.evaluated_at || new Date().toISOString(),
+          policy_metadata: parsed.policy_metadata || {},
+        };
+
+        setCustomReport(normalized);
+        setCustomFileName(file.name);
+        setActiveReportKey("custom");
       } catch (err) {
-        alert("Failed to parse JSON file: " + err);
+        setUploadError(`Failed to parse JSON file: ${err instanceof Error ? err.message : String(err)}`);
       }
     };
     reader.readAsText(file);
@@ -447,14 +501,57 @@ export default function Home() {
                 className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-all ${
                   activeReportKey === "custom"
                     ? "bg-purple-500/10 text-purple-300 border-purple-500/40"
-                    : "bg-slate-900/60 text-slate-400 border-slate-800"
+                    : "bg-slate-900/60 text-slate-400 border-slate-800 hover:text-slate-200"
                 }`}
               >
-                Custom Upload
+                {customFileName ? `Uploaded: ${customFileName}` : "Custom Upload"}
               </button>
             )}
           </div>
         </div>
+
+        {/* Upload Error Banner */}
+        {uploadError && (
+          <div className="flex items-center justify-between p-3.5 rounded-xl border border-rose-500/40 bg-rose-950/30 text-rose-300 text-xs">
+            <div className="flex items-center space-x-2">
+              <AlertOctagon className="w-4 h-4 text-rose-400 flex-shrink-0" />
+              <span>{uploadError}</span>
+            </div>
+            <button
+              onClick={() => setUploadError(null)}
+              className="text-rose-400 hover:text-white font-mono text-[11px] underline ml-4"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
+        {/* Data Provenance Indicator */}
+        {isDemoActive ? (
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 rounded-xl border border-cyan-500/30 bg-cyan-950/20 text-cyan-300 text-xs gap-2">
+            <div className="flex items-center space-x-2">
+              <span className="font-semibold uppercase px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-200 text-[10px] tracking-wide">
+                Demonstration Mode
+              </span>
+              <span>Viewing static mock dataset for illustration. Not connected to a live CI telemetry stream.</span>
+            </div>
+            <span className="text-[11px] text-cyan-400/80 font-mono">
+              Evaluated at: {currentResult.evaluated_at || "Demonstration run"}
+            </span>
+          </div>
+        ) : (
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 rounded-xl border border-purple-500/30 bg-purple-950/20 text-purple-300 text-xs gap-2">
+            <div className="flex items-center space-x-2">
+              <span className="font-semibold uppercase px-2 py-0.5 rounded bg-purple-500/20 text-purple-200 text-[10px] tracking-wide">
+                Uploaded Report
+              </span>
+              <span>Viewing user-uploaded artifact: <strong className="text-white">{customFileName}</strong></span>
+            </div>
+            <span className="text-[11px] text-purple-400/80 font-mono">
+              Evaluated at: {currentResult.evaluated_at || "Recent run"}
+            </span>
+          </div>
+        )}
 
         {/* Gate Decision Hero Card */}
         <section

@@ -18,6 +18,7 @@ from pipelineshield.models import (
     Finding,
     GateDecision,
     PolicyConfig,
+    ScannerType,
     Severity,
 )
 
@@ -117,7 +118,15 @@ class PolicyEngine:
         reasons: List[str] = []
 
         for finding in findings:
-            # Count by severity (all findings, including exempted)
+            # 1. Scanner enablement check
+            if finding.scanner == ScannerType.TRIVY and not self.config.scanners.trivy.enabled:
+                continue
+            if finding.scanner == ScannerType.SEMGREP and not self.config.scanners.semgrep.enabled:
+                continue
+            if finding.scanner == ScannerType.DEPENDENCY_REVIEW and not self.config.scanners.dependency_review.enabled:
+                continue
+
+            # Count by severity (active non-disabled findings)
             if finding.severity == Severity.CRITICAL:
                 summary.critical += 1
             elif finding.severity == Severity.HIGH:
@@ -129,14 +138,77 @@ class PolicyEngine:
             else:
                 summary.info += 1
 
-            # Exemption check
+            # 2. Exemption check
             if self.is_exempted(finding):
                 summary.exempted += 1
                 exempted.append(finding)
                 continue
 
-            raw_threshold = self._resolve_threshold(finding.severity)
-            effective = self._apply_mode(raw_threshold)
+            # 3. Trivy ignore_unfixed check
+            if (
+                finding.scanner == ScannerType.TRIVY
+                and self.config.scanners.trivy.ignore_unfixed
+                and not finding.fixed_version
+            ):
+                continue
+
+            # 4. License compliance check (Dependency Review & license metadata)
+            license_blocking = False
+            lic = finding.license or finding.metadata.get("license")
+            if lic:
+                lic_str = str(lic).strip()
+                denied_licenses = [d.strip().upper() for d in self.config.scanners.dependency_review.deny_licenses]
+                allowed_licenses = [a.strip().upper() for a in self.config.scanners.dependency_review.allow_licenses]
+
+                if lic_str.upper() in denied_licenses:
+                    license_blocking = True
+                    reason_msg = f"Prohibited license '{lic_str}' detected in package '{finding.package_name or finding.id}' (denied by policy)."
+                    if reason_msg not in reasons:
+                        reasons.append(reason_msg)
+                elif allowed_licenses and lic_str.upper() not in allowed_licenses:
+                    license_blocking = True
+                    reason_msg = f"Unapproved license '{lic_str}' detected in package '{finding.package_name or finding.id}' (not in allowlist)."
+                    if reason_msg not in reasons:
+                        reasons.append(reason_msg)
+
+            # 5. Threshold evaluation (scanner-specific and global)
+            is_blocking = license_blocking
+            is_warning = False
+
+            if not is_blocking:
+                global_threshold = self._resolve_threshold(finding.severity)
+
+                if global_threshold == GateDecision.PASS:
+                    # Explicit PASS threshold takes precedence over scanner default fail list
+                    pass
+                else:
+                    # Check scanner-specific severity rules
+                    if (
+                        finding.scanner == ScannerType.TRIVY
+                        and finding.severity in self.config.scanners.trivy.fail_on_cve_severity
+                    ):
+                        is_blocking = True
+                    elif (
+                        finding.scanner == ScannerType.SEMGREP
+                        and finding.severity in self.config.scanners.semgrep.fail_on_severity
+                    ):
+                        is_blocking = True
+                    elif (
+                        finding.scanner == ScannerType.DEPENDENCY_REVIEW
+                        and finding.severity in self.config.scanners.dependency_review.deny_severities
+                    ):
+                        is_blocking = True
+                    elif global_threshold == GateDecision.BLOCK:
+                        is_blocking = True
+                    elif global_threshold == GateDecision.WARN:
+                        is_warning = True
+
+            raw_decision = (
+                GateDecision.BLOCK
+                if is_blocking
+                else (GateDecision.WARN if is_warning else GateDecision.PASS)
+            )
+            effective = self._apply_mode(raw_decision)
 
             if effective == GateDecision.BLOCK:
                 blocking.append(finding)

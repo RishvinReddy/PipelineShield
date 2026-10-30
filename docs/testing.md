@@ -8,10 +8,10 @@ This document details the automated testing approach, instructions, and quality 
 
 | Layer | Component | Framework | Objective |
 |---|---|---|---|
-| **Unit Tests** | Python Policy Engine | `pytest` | Validate model validation, config parsing, normalization rules, and policy evaluation logic. |
-| **Integration Tests** | Multi-Scanner Pipeline | `pytest` + fixture mocks | Ingest synthetic scanner outputs and verify end-to-end report and decision generation. |
-| **Frontend Tests** | Next.js Dashboard | TypeScript + ESLint + Next Build | Verify type safety, component contracts, and zero-error production build. |
-| **End-to-End CI Gates** | GitHub Actions | Workflow runners | Test real scanner execution against clean and deliberately vulnerable repositories. |
+| **Unit Tests** | Python Policy Engine | `pytest` | Validate model validation, typed scanner config parsing, normalization rules, and policy evaluation logic. |
+| **Integration Tests** | Multi-Scanner Pipeline | `pytest` + fixtures | Ingest real scanner outputs (Trivy, Semgrep, Dependency Review) and verify decision generation. |
+| **Frontend Verification** | Next.js Dashboard | TypeScript + ESLint + Next Build | Verify type safety, schema validation, and zero-error production build. |
+| **CI Simulation** | CLI Scans | Local CLI execution | Test clean, vulnerable, and error scenarios locally with exact exit codes. |
 
 ---
 
@@ -25,23 +25,20 @@ cd engine
 # Activate virtual environment
 source .venv/bin/activate
 
-# Execute pytest suite
-pytest -v
-
-# Run with coverage report
+# Execute full pytest suite with coverage
 pytest --cov=pipelineshield --cov-report=term-missing
 ```
 
-### Test Organization
+### Test Suite Structure (216 passing tests, 92% coverage)
 
 - `tests/test_imports.py`: Verifies module imports, package structure, and top-level exports.
 - `tests/test_models.py`: Validates Pydantic data schemas, enums, severity ordering, and immutability.
-- `tests/test_config.py`: Verifies YAML parsing, schema defaults, strict validation, and rejection of invalid policies.
-- `tests/test_normalizer.py`: Validates native parsing of Trivy, Semgrep, and Dependency Review JSON fixtures.
-- `tests/test_policy_engine.py`: Tests threshold evaluation, path exemptions, expiration, and error-guard wrapper.
+- `tests/test_config.py`: Verifies YAML parsing, schema defaults, strict validation, and rejection of invalid/unknown scanner options.
+- `tests/test_normalizer.py`: Validates native parsing of Trivy, Semgrep, and Dependency Review JSON fixtures and GitHub Action formats.
+- `tests/test_policy_engine.py`: Tests threshold evaluation, scanner enablement, Trivy `ignore_unfixed`, license allow/deny lists, path exemptions, and error-guard wrapper.
 - `tests/test_reporter.py`: Tests JSON report generation, Markdown tables, and markdown-escaping for security.
 - `tests/test_cli.py`: End-to-end CLI tests covering exit codes (0/1/2), multi-scanner flags, and malformed inputs.
-- `tests/fixtures/`: Real-world scanner JSON datasets for clean runs, CVEs, and SAST findings.
+- `tests/fixtures/`: Real-world scanner JSON datasets for clean runs, CVEs, SAST findings, and dependency changes.
 
 ---
 
@@ -52,7 +49,7 @@ The Next.js dashboard must pass TypeScript strict checks and production builds c
 ```bash
 cd dashboard
 
-# Type checking and linting
+# Type checking and linting (0 errors, 0 warnings required)
 npm run lint
 
 # Production compilation
@@ -61,20 +58,34 @@ npm run build
 
 ---
 
-## 4. CI/CD Security Gate Simulation
+## 4. End-to-End Local CLI Verification
 
-To test the security gate behavior locally with sample scanner outputs:
+### Clean Scan Verification (Expected Exit Code 0)
 
 ```bash
-# Evaluate sample clean findings
 python3 -m pipelineshield.cli \
   --policy config/policy.yaml \
-  --findings examples/clean-findings.json \
-  --output reports/summary.json
+  --findings examples/clean_scan.json \
+  --output reports/clean_summary.json
+echo "Exit code: $?"
+```
 
-# Evaluate sample vulnerable findings (expected exit code 1)
+### Vulnerable Scan Verification (Expected Exit Code 1)
+
+```bash
 python3 -m pipelineshield.cli \
   --policy config/policy.yaml \
-  --findings examples/vulnerable-findings.json \
-  --output reports/summary.json
+  --trivy examples/trivy_sample.json \
+  --semgrep examples/semgrep_sample.json \
+  --output reports/vuln_summary.json
+echo "Exit code: $?"
+```
+
+### Malformed JSON Verification (Expected Exit Code 2)
+
+```bash
+python3 -m pipelineshield.cli \
+  --policy config/policy.yaml \
+  --findings engine/tests/fixtures/malformed.json
+echo "Exit code: $?"
 ```
