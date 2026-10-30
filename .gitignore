@@ -1,6 +1,8 @@
 # Environment Variables and Secrets
 .env
 .env*.local
+!.env.example
+!dashboard/.env.example
 *.pem
 *.key
 *.cert
