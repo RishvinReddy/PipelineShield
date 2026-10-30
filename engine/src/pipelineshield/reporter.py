@@ -103,9 +103,26 @@ class Reporter:
                 "| Scanner | Status |",
                 "|---|---|",
             ])
+            status_icons = {
+                "COMPLETED": "🟢",
+                "FAILED": "🔴",
+                "DISABLED": "⚪",
+                "NOT_APPLICABLE": "🔵",
+            }
             for sc_name, sc_stat in sorted(result.scanner_status.items()):
-                sc_icon = "🟢" if sc_stat == "enabled" else "⚪"
+                sc_icon = status_icons.get(sc_stat.upper(), "⚪")
                 md.append(f"| `{_escape_md(sc_name)}` | {sc_icon} {_escape_md(sc_stat)} |")
+            md.append("")
+
+        if result.policy_metadata:
+            md.extend([
+                "## 📋 Execution Provenance",
+                "",
+                "| Property | Value |",
+                "|---|---|",
+            ])
+            for k, v in sorted(result.policy_metadata.items()):
+                md.append(f"| `{_escape_md(str(k))}` | `{_escape_md(str(v))}` |")
             md.append("")
 
         md.extend([

@@ -216,6 +216,13 @@ export function validateReportSchema(obj: unknown): ValidationResult {
     }
   }
 
+  // Optional policy_metadata object validation
+  if (rec.policy_metadata !== undefined && rec.policy_metadata !== null) {
+    if (typeof rec.policy_metadata !== "object" || Array.isArray(rec.policy_metadata)) {
+      return { valid: false, error: "'policy_metadata' must be an object." };
+    }
+  }
+
   // Validate finding arrays and their items
   const findingArrays: Array<[string, unknown]> = [
     ["blocking_findings", rec.blocking_findings],

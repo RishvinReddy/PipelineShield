@@ -6,6 +6,17 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      simulate_scanner_failure:
+        description: "Controlled scanner failure simulation for DevSecOps demonstration"
+        required: false
+        default: "none"
+        type: choice
+        options:
+          - none
+          - trivy
+          - semgrep
+          - dependency_review
 
 permissions:
   contents: read
@@ -114,7 +125,15 @@ jobs:
         run: mkdir -p reports
 
       - name: Install & Run Trivy Vulnerability Scanner
+        id: trivy
+        continue-on-error: true
+        env:
+          SIMULATE_FAILURE: ${{ inputs.simulate_scanner_failure }}
         run: |
+          if [ "$SIMULATE_FAILURE" = "trivy" ]; then
+            echo "[SIMULATION] Simulating controlled Trivy scanner failure."
+            exit 1
+          fi
           TRIVY_ENABLED=$(python3 -c "from pipelineshield.config import load_policy; p = load_policy('config/policy.yaml'); print('true' if p.scanners.trivy.enabled else 'false')")
           if [ "$TRIVY_ENABLED" != "true" ]; then
             echo "Trivy scanner is disabled in policy.yaml — skipping execution."
@@ -133,7 +152,15 @@ jobs:
           python3 -c "import json; json.load(open('reports/trivy.json'))"
 
       - name: Install & Run Semgrep SAST
+        id: semgrep
+        continue-on-error: true
+        env:
+          SIMULATE_FAILURE: ${{ inputs.simulate_scanner_failure }}
         run: |
+          if [ "$SIMULATE_FAILURE" = "semgrep" ]; then
+            echo "[SIMULATION] Simulating controlled Semgrep scanner failure."
+            exit 1
+          fi
           SEMGREP_ENABLED=$(python3 -c "from pipelineshield.config import load_policy; p = load_policy('config/policy.yaml'); print('true' if p.scanners.semgrep.enabled else 'false')")
           if [ "$SEMGREP_ENABLED" != "true" ]; then
             echo "Semgrep scanner is disabled in policy.yaml — skipping execution."
@@ -164,6 +191,7 @@ jobs:
 
       - name: Run GitHub Dependency Review
         id: dependency-review
+        continue-on-error: true
         if: github.event_name == 'pull_request' && steps.check-dep-review.outputs.enabled == 'true'
         uses: actions/dependency-review-action@3c4e3dcb1aa7874d2c16be7d79418e9b7efd6261 # v4.8.2
         with:
@@ -171,10 +199,22 @@ jobs:
           license-check: false
 
       - name: Export Dependency Review findings
+        id: export-dep-review
+        continue-on-error: true
         if: github.event_name == 'pull_request' && steps.check-dep-review.outputs.enabled == 'true'
         env:
           DEP_CHANGES: ${{ steps.dependency-review.outputs.dependency-changes }}
+          DEP_OUTCOME: ${{ steps.dependency-review.outcome }}
+          SIMULATE_FAILURE: ${{ inputs.simulate_scanner_failure }}
         run: |
+          if [ "$SIMULATE_FAILURE" = "dependency_review" ]; then
+            echo "[SIMULATION] Simulating controlled Dependency Review failure."
+            exit 1
+          fi
+          if [ "$DEP_OUTCOME" != "success" ]; then
+            echo "Dependency Review action step failed."
+            exit 1
+          fi
           if [ -z "${DEP_CHANGES// }" ]; then
             echo "[]" > reports/dependency-review.json
           else
@@ -184,31 +224,90 @@ jobs:
 
       - name: Run PipelineShield Security Gate
         id: gate
+        env:
+          TRIVY_OUTCOME: ${{ steps.trivy.outcome }}
+          SEMGREP_OUTCOME: ${{ steps.semgrep.outcome }}
+          DEP_OUTCOME: ${{ steps.dependency-review.outcome }}
+          DEP_EXPORT_OUTCOME: ${{ steps.export-dep-review.outcome }}
+          GH_EVENT_NAME: ${{ github.event_name }}
+          GH_REPOSITORY: ${{ github.repository }}
+          GH_BRANCH: ${{ github.head_ref || github.ref_name }}
+          GH_SHA: ${{ github.sha }}
+          GH_PR_NUM: ${{ github.event.pull_request.number }}
+          GH_RUN_ID: ${{ github.run_id }}
+          GH_SERVER_URL: ${{ github.server_url }}
         run: |
-          TRIVY_FLAG=""
-          if [ -f reports/trivy.json ]; then
-            TRIVY_FLAG="--trivy reports/trivy.json"
+          ARGS=()
+          STATUS_OVERRIDES=()
+
+          # --- Trivy outcome & report check ---
+          if [ "$TRIVY_OUTCOME" = "failure" ]; then
+            echo "[CI] Trivy step failed execution."
+            STATUS_OVERRIDES+=("trivy=FAILED")
+          elif [ -f reports/trivy.json ] && python3 -c "import json; json.load(open('reports/trivy.json'))" 2>/dev/null; then
+            ARGS+=(--trivy reports/trivy.json)
+          else
+            TRIVY_ENABLED=$(python3 -c "from pipelineshield.config import load_policy; p = load_policy('config/policy.yaml'); print('true' if p.scanners.trivy.enabled else 'false')")
+            if [ "$TRIVY_ENABLED" = "true" ]; then
+              echo "[CI] Trivy report missing or invalid JSON."
+              STATUS_OVERRIDES+=("trivy=FAILED")
+            fi
           fi
 
-          SEMGREP_FLAG=""
-          if [ -f reports/semgrep.json ]; then
-            SEMGREP_FLAG="--semgrep reports/semgrep.json"
+          # --- Semgrep outcome & report check ---
+          if [ "$SEMGREP_OUTCOME" = "failure" ]; then
+            echo "[CI] Semgrep step failed execution."
+            STATUS_OVERRIDES+=("semgrep=FAILED")
+          elif [ -f reports/semgrep.json ] && python3 -c "import json; json.load(open('reports/semgrep.json'))" 2>/dev/null; then
+            ARGS+=(--semgrep reports/semgrep.json)
+          else
+            SEMGREP_ENABLED=$(python3 -c "from pipelineshield.config import load_policy; p = load_policy('config/policy.yaml'); print('true' if p.scanners.semgrep.enabled else 'false')")
+            if [ "$SEMGREP_ENABLED" = "true" ]; then
+              echo "[CI] Semgrep report missing or invalid JSON."
+              STATUS_OVERRIDES+=("semgrep=FAILED")
+            fi
           fi
 
-          DEP_FLAG=""
-          if [ -f reports/dependency-review.json ]; then
-            DEP_FLAG="--dependency-review reports/dependency-review.json"
+          # --- Dependency Review outcome & report check ---
+          if [ "$GH_EVENT_NAME" != "pull_request" ]; then
+            STATUS_OVERRIDES+=("dependency_review=NOT_APPLICABLE")
+          elif [ "$DEP_OUTCOME" = "failure" ] || [ "$DEP_EXPORT_OUTCOME" = "failure" ]; then
+            echo "[CI] Dependency Review step or findings export failed."
+            STATUS_OVERRIDES+=("dependency_review=FAILED")
+          elif [ -f reports/dependency-review.json ] && python3 -c "import json; json.load(open('reports/dependency-review.json'))" 2>/dev/null; then
+            ARGS+=(--dependency-review reports/dependency-review.json)
+          else
+            DEP_ENABLED=$(python3 -c "from pipelineshield.config import load_policy; p = load_policy('config/policy.yaml'); print('true' if p.scanners.dependency_review.enabled else 'false')")
+            if [ "$DEP_ENABLED" = "true" ]; then
+              echo "[CI] Dependency Review report missing or invalid JSON."
+              STATUS_OVERRIDES+=("dependency_review=FAILED")
+            fi
           fi
 
-          python -m pipelineshield.cli \
-            --policy config/policy.yaml \
-            --event-name "${{ github.event_name }}" \
-            $TRIVY_FLAG \
-            $SEMGREP_FLAG \
-            $DEP_FLAG \
-            --output reports/security-summary.json \
-            --summary-md "$GITHUB_STEP_SUMMARY"
+          # Assemble CLI arguments
+          CMD=(python -m pipelineshield.cli --policy config/policy.yaml --event-name "$GH_EVENT_NAME")
+          CMD+=(--repository "$GH_REPOSITORY")
+          CMD+=(--branch "$GH_BRANCH")
+          CMD+=(--commit "$GH_SHA")
+          if [ -n "$GH_PR_NUM" ]; then
+            CMD+=(--pull-request "$GH_PR_NUM")
+          fi
+          CMD+=(--workflow-run-id "$GH_RUN_ID")
+          CMD+=(--workflow-run-url "$GH_SERVER_URL/$GH_REPOSITORY/actions/runs/$GH_RUN_ID")
+          CMD+=(--output reports/security-summary.json)
+          CMD+=(--summary-md "$GITHUB_STEP_SUMMARY")
 
+          if [ ${#ARGS[@]} -gt 0 ]; then
+            CMD+=("${ARGS[@]}")
+          fi
+
+          if [ ${#STATUS_OVERRIDES[@]} -gt 0 ]; then
+            CMD+=(--scanner-status "${STATUS_OVERRIDES[@]}")
+          fi
+
+          echo "Executing security gate:"
+          echo "${CMD[@]}"
+          "${CMD[@]}"
 
       - name: Upload Security Reports Artifact
         uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1

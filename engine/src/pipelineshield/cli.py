@@ -115,6 +115,48 @@ def create_parser() -> argparse.ArgumentParser:
         help="Explicit scanner status overrides (e.g. trivy=COMPLETED dependency_review=NOT_APPLICABLE).",
     )
     parser.add_argument(
+        "--repository",
+        default=None,
+        metavar="REPO",
+        help="Repository name (e.g. owner/repo).",
+    )
+    parser.add_argument(
+        "--branch",
+        default=None,
+        metavar="BRANCH",
+        help="Branch or PR head branch name.",
+    )
+    parser.add_argument(
+        "--commit",
+        default=None,
+        metavar="SHA",
+        help="Commit SHA.",
+    )
+    parser.add_argument(
+        "--pull-request",
+        default=None,
+        metavar="PR_NUM",
+        help="Pull request number, if applicable.",
+    )
+    parser.add_argument(
+        "--workflow-run-id",
+        default=None,
+        metavar="RUN_ID",
+        help="GitHub Actions workflow run ID.",
+    )
+    parser.add_argument(
+        "--workflow-run-url",
+        default=None,
+        metavar="RUN_URL",
+        help="GitHub Actions workflow run URL.",
+    )
+    parser.add_argument(
+        "--metadata",
+        default=None,
+        metavar="JSON_STRING",
+        help="Additional policy metadata in JSON format.",
+    )
+    parser.add_argument(
         "--output", "-o",
         default="reports/security-summary.json",
         metavar="OUTPUT_JSON",
@@ -209,6 +251,47 @@ def main(args: Optional[list] = None) -> int:
         print(f"[ERROR] Unexpected error loading policy: {e}", file=sys.stderr)
         return _EXIT_ERROR
 
+    # --- Provenance / Execution Metadata ---
+    policy_meta: Dict[str, Any] = {}
+    repo = parsed.repository or os.environ.get("GITHUB_REPOSITORY")
+    if repo:
+        policy_meta["repository"] = repo
+    event = parsed.event_name or os.environ.get("GITHUB_EVENT_NAME")
+    if event:
+        policy_meta["event_name"] = event
+    branch = parsed.branch or os.environ.get("GITHUB_HEAD_REF") or os.environ.get("GITHUB_REF_NAME")
+    if branch:
+        policy_meta["branch"] = branch
+    commit = parsed.commit or os.environ.get("GITHUB_SHA")
+    if commit:
+        policy_meta["commit"] = commit
+    pr_num = parsed.pull_request
+    if not pr_num and os.environ.get("GITHUB_REF", "").startswith("refs/pull/"):
+        parts = os.environ.get("GITHUB_REF", "").split("/")
+        if len(parts) >= 3 and parts[2].isdigit():
+            pr_num = parts[2]
+    if pr_num is not None and str(pr_num).strip():
+        try:
+            policy_meta["pull_request_number"] = int(pr_num)
+        except ValueError:
+            policy_meta["pull_request_number"] = str(pr_num).strip()
+    run_id = parsed.workflow_run_id or os.environ.get("GITHUB_RUN_ID")
+    if run_id:
+        policy_meta["workflow_run_id"] = str(run_id)
+    run_url = parsed.workflow_run_url
+    if not run_url and run_id and repo:
+        server_url = os.environ.get("GITHUB_SERVER_URL", "https://github.com")
+        run_url = f"{server_url}/{repo}/actions/runs/{run_id}"
+    if run_url:
+        policy_meta["workflow_run_url"] = run_url
+    if parsed.metadata:
+        try:
+            extra = json.loads(parsed.metadata)
+            if isinstance(extra, dict):
+                policy_meta.update(extra)
+        except Exception:
+            pass
+
     # --- Check scanner input requirements ---
     all_scanners_disabled = (
         not policy.scanners.trivy.enabled
@@ -221,6 +304,7 @@ def main(args: Optional[list] = None) -> int:
         or parsed.trivy
         or parsed.semgrep
         or parsed.dependency_review
+        or parsed.scanner_status
     )
 
     if not has_input:
@@ -237,29 +321,43 @@ def main(args: Optional[list] = None) -> int:
 
     # --- Load findings ---
     normalized = []
-    try:
-        if parsed.findings:
+    scanner_load_errors: Dict[str, str] = {}
+
+    if parsed.findings:
+        try:
             findings_path = Path(parsed.findings)
             raw_data = _load_json_file(findings_path)
             normalized.extend(_normalize_findings(parsed.scanner, raw_data))
-        if parsed.trivy:
+        except (FileNotFoundError, OSError, ValueError, NormalizationError) as e:
+            scanner_load_errors[parsed.scanner] = str(e)
+            print(f"[ERROR] Failed loading --findings ({parsed.scanner}): {e}", file=sys.stderr)
+
+    if parsed.trivy:
+        try:
             trivy_path = Path(parsed.trivy)
             raw_data = _load_json_file(trivy_path)
             normalized.extend(Normalizer.from_trivy(raw_data))
-        if parsed.semgrep:
+        except (FileNotFoundError, OSError, ValueError, NormalizationError) as e:
+            scanner_load_errors["trivy"] = str(e)
+            print(f"[ERROR] Failed loading --trivy: {e}", file=sys.stderr)
+
+    if parsed.semgrep:
+        try:
             semgrep_path = Path(parsed.semgrep)
             raw_data = _load_json_file(semgrep_path)
             normalized.extend(Normalizer.from_semgrep(raw_data))
-        if parsed.dependency_review:
+        except (FileNotFoundError, OSError, ValueError, NormalizationError) as e:
+            scanner_load_errors["semgrep"] = str(e)
+            print(f"[ERROR] Failed loading --semgrep: {e}", file=sys.stderr)
+
+    if parsed.dependency_review:
+        try:
             dep_path = Path(parsed.dependency_review)
             raw_data = _load_json_file(dep_path)
             normalized.extend(Normalizer.from_dependency_review(raw_data))
-    except (FileNotFoundError, OSError, ValueError, NormalizationError) as e:
-        print(f"[ERROR] {e}", file=sys.stderr)
-        return _EXIT_ERROR
-    except Exception as e:
-        print(f"[ERROR] Unexpected error processing findings: {e}", file=sys.stderr)
-        return _EXIT_ERROR
+        except (FileNotFoundError, OSError, ValueError, NormalizationError) as e:
+            scanner_load_errors["dependency_review"] = str(e)
+            print(f"[ERROR] Failed loading --dependency-review: {e}", file=sys.stderr)
 
     # --- Resolve scanner execution statuses ---
     explicit_status: Dict[str, str] = {}
@@ -271,6 +369,11 @@ def main(args: Optional[list] = None) -> int:
 
     resolved_status: Dict[str, str] = {}
     for sc in ("trivy", "semgrep", "dependency_review"):
+        if sc in scanner_load_errors or "pipelineshield" in scanner_load_errors:
+            if getattr(policy.scanners, sc).enabled or sc in scanner_load_errors:
+                resolved_status[sc] = "FAILED"
+                continue
+
         if sc in explicit_status:
             resolved_status[sc] = explicit_status[sc]
             continue
@@ -312,7 +415,16 @@ def main(args: Optional[list] = None) -> int:
 
     # --- Evaluate ---
     engine = PolicyEngine(policy)
-    result = engine.evaluate_with_error_guard(normalized, scanner_status=resolved_status)
+    result = engine.evaluate_with_error_guard(
+        normalized,
+        scanner_status=resolved_status,
+        policy_metadata=policy_meta,
+    )
+
+    for sc, err in scanner_load_errors.items():
+        err_msg = f"Scanner '{sc}' findings file failed to parse: {err}"
+        if err_msg not in result.errors:
+            result.errors.append(err_msg)
 
     # --- Write JSON report ---
     try:

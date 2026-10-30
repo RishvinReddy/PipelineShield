@@ -9,7 +9,7 @@ Design principles:
 """
 
 import fnmatch
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from pipelineshield.models import (
     EnforcementMode,
@@ -104,6 +104,7 @@ class PolicyEngine:
         self,
         findings: List[Finding],
         scanner_status: Optional[Dict[str, str]] = None,
+        policy_metadata: Optional[Dict[str, Any]] = None,
     ) -> EvaluationResult:
         """Evaluate a list of normalized findings against policy rules.
 
@@ -296,6 +297,7 @@ class PolicyEngine:
             exempted_findings=exempted,
             reasons=reasons,
             scanner_status=final_scanner_status,
+            policy_metadata=policy_metadata or {},
         )
 
     def _determine_decision(
@@ -372,6 +374,7 @@ class PolicyEngine:
         self,
         findings: List[Finding],
         scanner_status: Optional[Dict[str, str]] = None,
+        policy_metadata: Optional[Dict[str, Any]] = None,
     ) -> EvaluationResult:
         """Run evaluate() wrapped in a defensive error guard.
 
@@ -382,14 +385,18 @@ class PolicyEngine:
         Args:
             findings: List of normalized Finding objects.
             scanner_status: Optional explicit scanner execution status map.
+            policy_metadata: Optional execution provenance and policy metadata.
 
         Returns:
             EvaluationResult — always returns, never raises.
         """
         try:
+            kwargs = {}
             if scanner_status is not None:
-                return self.evaluate(findings, scanner_status=scanner_status)
-            return self.evaluate(findings)
+                kwargs["scanner_status"] = scanner_status
+            if policy_metadata is not None:
+                kwargs["policy_metadata"] = policy_metadata
+            return self.evaluate(findings, **kwargs)
         except Exception as exc:
             error_msg = f"Policy engine encountered an unexpected error: {exc}"
             return EvaluationResult(
@@ -399,4 +406,5 @@ class PolicyEngine:
                 reasons=["ERROR: Policy engine failed. Gate closed for safety."],
                 errors=[error_msg],
                 scanner_status=scanner_status or {},
+                policy_metadata=policy_metadata or {},
             )
