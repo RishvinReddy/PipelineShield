@@ -103,7 +103,7 @@ def create_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--event-name",
-        default=os.environ.get("GITHUB_EVENT_NAME"),
+        default=None,
         metavar="EVENT_NAME",
         help="CI event name (e.g. 'pull_request', 'push', 'workflow_dispatch').",
     )
