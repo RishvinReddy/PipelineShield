@@ -372,4 +372,8 @@ class EvaluationResult(BaseModel):
         default_factory=dict,
         description="Execution status per scanner ('COMPLETED', 'DISABLED', 'NOT_APPLICABLE', 'FAILED')",
     )
+    policy_metadata: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Execution provenance and policy metadata (repository, branch, commit, workflow_run_id, etc.)",
+    )
 

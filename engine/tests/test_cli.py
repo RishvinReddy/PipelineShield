@@ -576,3 +576,214 @@ class TestMultiScannerCLI:
         }
 
 
+class TestScannerFailureAndProvenance:
+    """Rigorous tests for scanner failures, corrupt files, and CI provenance metadata."""
+
+    def test_cli_trivy_execution_failure_returns_2_and_generates_error_report(self, tmp_path):
+        policy_path = write_policy(tmp_path, 'version: "1.0"')
+        out_path = tmp_path / "summary.json"
+        code = main([
+            "--policy", str(policy_path),
+            "--scanner-status", "trivy=FAILED", "semgrep=COMPLETED", "dependency_review=COMPLETED",
+            "--output", str(out_path),
+        ])
+        assert code == 2
+        assert out_path.exists()
+        data = json.loads(out_path.read_text())
+        assert data["decision"] == "ERROR"
+        assert data["scanner_status"]["trivy"] == "FAILED"
+        assert data["scanner_status"]["semgrep"] == "COMPLETED"
+        assert any("Scanner 'trivy' failed" in r for r in data["reasons"])
+
+    def test_cli_semgrep_execution_failure_returns_2_and_generates_error_report(self, tmp_path):
+        policy_path = write_policy(tmp_path, 'version: "1.0"')
+        out_path = tmp_path / "summary.json"
+        code = main([
+            "--policy", str(policy_path),
+            "--scanner-status", "trivy=COMPLETED", "semgrep=FAILED", "dependency_review=COMPLETED",
+            "--output", str(out_path),
+        ])
+        assert code == 2
+        assert out_path.exists()
+        data = json.loads(out_path.read_text())
+        assert data["decision"] == "ERROR"
+        assert data["scanner_status"]["semgrep"] == "FAILED"
+        assert any("Scanner 'semgrep' failed" in r for r in data["reasons"])
+
+    def test_cli_dependency_review_failure_returns_2_and_generates_error_report(self, tmp_path):
+        policy_path = write_policy(tmp_path, 'version: "1.0"')
+        out_path = tmp_path / "summary.json"
+        code = main([
+            "--policy", str(policy_path),
+            "--scanner-status", "trivy=COMPLETED", "semgrep=COMPLETED", "dependency_review=FAILED",
+            "--output", str(out_path),
+        ])
+        assert code == 2
+        assert out_path.exists()
+        data = json.loads(out_path.read_text())
+        assert data["decision"] == "ERROR"
+        assert data["scanner_status"]["dependency_review"] == "FAILED"
+
+    def test_cli_corrupt_trivy_json_produces_error_report_and_exit_2(self, tmp_path):
+        policy_path = write_policy(tmp_path, 'version: "1.0"')
+        corrupt_trivy = tmp_path / "trivy_corrupt.json"
+        corrupt_trivy.write_text("{ incomplete json: ", encoding="utf-8")
+        out_path = tmp_path / "summary.json"
+
+        code = main([
+            "--policy", str(policy_path),
+            "--trivy", str(corrupt_trivy),
+            "--output", str(out_path),
+        ])
+        assert code == 2
+        assert out_path.exists()
+        data = json.loads(out_path.read_text())
+        assert data["decision"] == "ERROR"
+        assert data["scanner_status"]["trivy"] == "FAILED"
+        assert any("trivy" in err.lower() for err in data.get("errors", []))
+
+    def test_cli_corrupt_semgrep_json_produces_error_report_and_exit_2(self, tmp_path):
+        policy_path = write_policy(tmp_path, 'version: "1.0"')
+        corrupt_semgrep = tmp_path / "semgrep_corrupt.json"
+        corrupt_semgrep.write_text("[ invalid semgrep output ", encoding="utf-8")
+        out_path = tmp_path / "summary.json"
+
+        code = main([
+            "--policy", str(policy_path),
+            "--semgrep", str(corrupt_semgrep),
+            "--output", str(out_path),
+        ])
+        assert code == 2
+        assert out_path.exists()
+        data = json.loads(out_path.read_text())
+        assert data["decision"] == "ERROR"
+        assert data["scanner_status"]["semgrep"] == "FAILED"
+
+    def test_cli_one_scanner_failing_while_another_completes_produces_error_exit_2(self, tmp_path):
+        """A completed scanner must never mask another scanner's failure."""
+        policy_path = write_policy(tmp_path, 'version: "1.0"')
+        out_path = tmp_path / "summary.json"
+        code = main([
+            "--policy", str(policy_path),
+            "--semgrep", str(FIXTURES / "semgrep_clean.json"),
+            "--scanner-status", "trivy=FAILED", "semgrep=COMPLETED", "dependency_review=NOT_APPLICABLE",
+            "--output", str(out_path),
+        ])
+        assert code == 2
+        assert out_path.exists()
+        data = json.loads(out_path.read_text())
+        assert data["decision"] == "ERROR"
+        assert data["scanner_status"]["semgrep"] == "COMPLETED"
+        assert data["scanner_status"]["trivy"] == "FAILED"
+        assert data["scanner_status"]["dependency_review"] == "NOT_APPLICABLE"
+
+    def test_cli_provenance_metadata_recorded_accurately(self, tmp_path):
+        policy_path = write_policy(tmp_path, 'version: "1.0"')
+        out_path = tmp_path / "summary.json"
+        md_path = tmp_path / "summary.md"
+        code = main([
+            "--policy", str(policy_path),
+            "--trivy", str(FIXTURES / "trivy_clean.json"),
+            "--semgrep", str(FIXTURES / "semgrep_clean.json"),
+            "--scanner-status", "dependency_review=COMPLETED",
+            "--event-name", "pull_request",
+            "--repository", "RishvinReddy/PipelineShield",
+            "--branch", "fix/ci-scanner-failure-reporting",
+            "--commit", "abcdef1234567890",
+            "--pull-request", "3",
+            "--workflow-run-id", "41098321851",
+            "--workflow-run-url", "https://github.com/RishvinReddy/PipelineShield/actions/runs/41098321851",
+            "--metadata", '{"environment": "ci-test"}',
+            "--output", str(out_path),
+            "--summary-md", str(md_path),
+        ])
+        assert code == 0
+        data = json.loads(out_path.read_text())
+        meta = data.get("policy_metadata", {})
+        assert meta["repository"] == "RishvinReddy/PipelineShield"
+        assert meta["branch"] == "fix/ci-scanner-failure-reporting"
+        assert meta["commit"] == "abcdef1234567890"
+        assert meta["pull_request_number"] == 3
+        assert meta["workflow_run_id"] == "41098321851"
+        assert meta["workflow_run_url"] == "https://github.com/RishvinReddy/PipelineShield/actions/runs/41098321851"
+        assert meta["environment"] == "ci-test"
+        assert meta["event_name"] == "pull_request"
+
+        # Verify summary markdown contains provenance section
+        assert md_path.exists()
+        md_text = md_path.read_text()
+        assert "Execution Provenance" in md_text
+        assert "RishvinReddy/PipelineShield" in md_text
+
+    def test_cli_clean_completed_scans_returns_0(self, tmp_path):
+        policy_path = write_policy(tmp_path, 'version: "1.0"')
+        out_path = tmp_path / "summary.json"
+        code = main([
+            "--policy", str(policy_path),
+            "--trivy", str(FIXTURES / "trivy_clean.json"),
+            "--semgrep", str(FIXTURES / "semgrep_clean.json"),
+            "--scanner-status", "dependency_review=NOT_APPLICABLE",
+            "--output", str(out_path),
+        ])
+        assert code == 0
+        data = json.loads(out_path.read_text())
+        assert data["decision"] == "PASS"
+        assert data["summary"]["total_findings"] == 0
+
+    def test_cli_vulnerable_critical_finding_returns_1_block(self, tmp_path):
+        policy_path = write_policy(tmp_path, 'version: "1.0"')
+        vulnerable_findings = [{
+            "id": "CVE-2024-CRITICAL-01",
+            "scanner": "trivy",
+            "title": "Remote Code Execution",
+            "severity": "CRITICAL",
+        }]
+        vuln_file = tmp_path / "vuln.json"
+        vuln_file.write_text(json.dumps(vulnerable_findings))
+        out_path = tmp_path / "summary.json"
+
+        code = main([
+            "--policy", str(policy_path),
+            "--findings", str(vuln_file),
+            "--output", str(out_path),
+        ])
+        assert code == 1
+        data = json.loads(out_path.read_text())
+        assert data["decision"] == "BLOCK"
+        assert data["summary"]["critical"] == 1
+        assert data["summary"]["blocking_count"] == 1
+
+    def test_cli_advisory_findings_produce_warn_exit_0(self, tmp_path):
+        policy_yaml = """
+        version: "1.0"
+        thresholds:
+          low: WARN
+          info: PASS
+        enforcement:
+          mode: strict
+          fail_on_block: true
+          fail_on_warn: false
+        """
+        policy_path = write_policy(tmp_path, policy_yaml)
+        advisory_findings = [{
+            "id": "ADVISORY-01",
+            "scanner": "semgrep",
+            "title": "Code quality hint",
+            "severity": "LOW",
+        }]
+        adv_file = tmp_path / "adv.json"
+        adv_file.write_text(json.dumps(advisory_findings))
+        out_path = tmp_path / "summary.json"
+
+        code = main([
+            "--policy", str(policy_path),
+            "--findings", str(adv_file),
+            "--output", str(out_path),
+        ])
+        assert code == 0
+        data = json.loads(out_path.read_text())
+        assert data["decision"] == "WARN"
+        assert data["summary"]["warning_count"] == 1
+
+
+

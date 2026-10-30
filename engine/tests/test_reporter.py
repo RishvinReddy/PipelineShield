@@ -215,3 +215,32 @@ class TestMarkdownReport:
         md = Reporter.to_markdown(result)
         assert "Total findings" in md
         assert "5" in md
+
+    def test_markdown_scanner_status_icons_rendered(self):
+        result = make_result(
+            GateDecision.ERROR,
+            scanner_status={
+                "trivy": "FAILED",
+                "semgrep": "COMPLETED",
+                "dependency_review": "NOT_APPLICABLE",
+            },
+        )
+        md = Reporter.to_markdown(result)
+        assert "Scanner Execution Status" in md
+        assert "🔴 FAILED" in md
+        assert "🟢 COMPLETED" in md
+        assert "🔵 NOT_APPLICABLE" in md
+
+    def test_markdown_execution_provenance_rendered(self):
+        result = make_result(
+            GateDecision.PASS,
+            policy_metadata={
+                "repository": "RishvinReddy/PipelineShield",
+                "commit": "84cf337",
+                "workflow_run_id": "41098321851",
+            },
+        )
+        md = Reporter.to_markdown(result)
+        assert "Execution Provenance" in md
+        assert "RishvinReddy/PipelineShield" in md
+        assert "84cf337" in md
